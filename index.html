@@ -17,6 +17,9 @@
   #bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
   #bar label { color:var(--dim); font-size:14px; display:flex; align-items:center; gap:4px; }
   #engine { font-size:13px; color:var(--accent); }
+  #meterBox { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:4px; }
+  #meter { display:inline-block; width:90px; height:8px; background:#0d1117; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
+  #meterFill { display:block; height:100%; width:0; background:var(--ok); }
   #status { margin-left:auto; font-size:14px; color:var(--dim); }
   #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
   #cfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
@@ -58,6 +61,7 @@
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
   <span id="engine"></span>
+  <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
 </div>
 
@@ -147,7 +151,7 @@ $("cfgSave").onclick = () => {
 };
 setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
-const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。只輸出翻譯，不要加任何說明。";
+const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
 function buildCtx(c) {
   let s = "";
@@ -254,7 +258,7 @@ function followSlides() {
     if (s > bestScore) { bestScore = s; best = i; bestHits = hits; }
   }
   let shown = curHits;
-  if ($("follow").checked && best && best !== page && bestHits.length >= 2 && bestScore > curScore * 1.4) {
+  if ($("follow").checked && best && best !== page && bestHits.length >= 3 && bestScore > curScore * 1.6 + 1) {
     showPage(best); shown = bestHits;
   }
   const box = $("hits"); box.textContent = "";
@@ -378,7 +382,7 @@ function startRec() {
         const rest = w.slice(committedWords).join(" ");
         committedWords = Math.max(0, committedWords - w.length);
         if (rest) commit(rest);
-      } else interim += " " + txt;
+      } else interim += txt;
     }
     // 老師一直講沒停頓時，不等辨識結束，先把前面穩定的部分切出來翻
     let pending = toWords(interim).slice(committedWords);
@@ -413,6 +417,29 @@ function startRec() {
   };
   try { rec.start(); } catch (e) { setStatus("無法啟動：" + e.message, "bad"); }
 }
+// 音量表：只用來確認聲音有沒有進到麥克風，聲音不會被存下來或傳出去
+let meterStream = null, meterCtx = null, meterTimer = 0;
+async function startMeter() {
+  try {
+    meterStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    meterCtx = new AudioContext();
+    const an = meterCtx.createAnalyser(); an.fftSize = 512;
+    meterCtx.createMediaStreamSource(meterStream).connect(an);
+    const buf = new Uint8Array(an.fftSize);
+    meterTimer = setInterval(() => {
+      an.getByteTimeDomainData(buf);
+      let peak = 0;
+      for (let k = 0; k < buf.length; k++) peak = Math.max(peak, Math.abs(buf[k] - 128));
+      $("meterFill").style.width = Math.min(100, peak * 2.5) + "%";
+    }, 100);
+  } catch (e) {}
+}
+function stopMeter() {
+  clearInterval(meterTimer);
+  if (meterStream) meterStream.getTracks().forEach(t => t.stop());
+  if (meterCtx) meterCtx.close();
+  meterStream = meterCtx = null; $("meterFill").style.width = "0";
+}
 function updateBtn() {
   $("listen").textContent = listening ? "⏹ 停止" : "🎤 開始聽";
   $("listen").classList.toggle("on", listening);
@@ -423,9 +450,10 @@ $("listen").onclick = () => {
   if (listening) {
     setStatus("啟動中…");
     getTranslator("en", "zh-Hant");
-    startRec();
+    startRec(); startMeter();
   } else {
     try { rec.stop(); } catch (e) {}
+    stopMeter();
     $("interim").textContent = "";
     setStatus("已停止");
   }
