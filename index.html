@@ -62,7 +62,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 14</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 15</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -156,7 +156,7 @@ $("cfgSave").onclick = () => {
 };
 setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
-const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
+const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
 function buildCtx(c) {
   let s = "";
@@ -292,8 +292,17 @@ async function translate(text, from, to, ctx) {
   if (aiKey && from === "en") {
     try {
       // 前一段用「上一輪對話」的方式給 AI 看，它就只會接著翻新的這段，不會重翻
-      const hist = (ctx && ctx.prev && ctx.prevZh) ? [{ role: "user", content: ctx.prev }, { role: "assistant", content: ctx.prevZh }] : [];
-      const out = await callAI(SYS_TR + "\n\n" + buildCtx(ctx), text, hist);
+      const hist = (ctx && ctx.prev && ctx.prevZh && !ctx.prevZh.startsWith("（翻譯失敗")) ? [{ role: "user", content: ctx.prev }, { role: "assistant", content: ctx.prevZh }] : [];
+      const sys = SYS_TR + "\n\n" + buildCtx(ctx);
+      const lastPara = t => { const ps = t.split(/\n\s*\n/).map(x => x.trim()).filter(Boolean); return ps.length ? ps[ps.length - 1] : t; };
+      let out = lastPara(await callAI(sys, text, hist));
+      // 中文通常只有英文字元數的三到四成；明顯太長多半是把前一段又翻了一次，要求它重來一次
+      if (hist.length && text.length > 40 && out.length > text.length * 0.55) {
+        try {
+          const again = lastPara(await callAI(sys, "你的翻譯太長，包含了前面段落已經翻過的內容。請只輸出最新這一段英文對應的中文，不要重述前文，不要解釋。", hist.concat([{ role: "user", content: text }, { role: "assistant", content: out }])));
+          if (again && again.length < out.length) out = again;
+        } catch (e) {}
+      }
       if (out) { setEngine("AI"); return out; }
     } catch (e) { setStatus("AI 翻譯失敗，先改用一般翻譯：" + e.message, "bad"); }
   }
@@ -518,7 +527,7 @@ $("export").onclick = () => {
     ".zh{font-size:16px}.en{font-size:13px;color:#667}.row{padding:5px 10px;margin:3px 0;border-left:4px solid transparent;break-inside:avoid}" +
     ".row.star{margin:6px 0}.t{font-size:11px;color:#99a}@media print{body{margin:0}}" +
     "</style></head><body>";
-  h += "<h1>上課筆記</h1><div class='sum'>" + day + "　共 " + log.length + " 段字幕，" + stars + " 句重點</div>";
+  h += "<h1>上課筆記</h1><div class='sum'>" + day + "　" + $("ver").textContent + "　共 " + log.length + " 段字幕，" + stars + " 句重點</div>";
   h += "<h2>一、重點與我的筆記</h2>";
   if (!pages.size) h += "<p class='sum'>這次沒有標重點，也沒有寫筆記。</p>";
   [...pages].sort((a, b) => a - b).forEach(p => {
