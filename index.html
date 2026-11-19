@@ -34,6 +34,22 @@
   #slideWrap { flex:1; overflow:auto; padding:0 12px; min-height:0; }
   #slide { display:block; max-width:100%; background:#fff; border-radius:4px; }
   #empty { color:var(--dim); padding:40px 12px; text-align:center; line-height:1.9; }
+  #tools { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 12px 6px; font-size:13px; }
+  #tools button { padding:3px 9px; font-size:13px; }
+  #tools button.on { background:#7a5a12; border-color:var(--accent); }
+  #toolHint { color:var(--accent); font-size:13px; }
+  #slideBox { position:relative; display:inline-block; line-height:0; max-width:100%; }
+  #ink { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+  #slideBox.mode-pen #ink { pointer-events:auto; touch-action:none; cursor:crosshair; }
+  #slideBox.mode-pin { cursor:copy; }
+  #pinLayer { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+  .pin { position:absolute; transform:translate(-50%,-50%); width:22px; height:22px; border-radius:50%; background:#e53935; color:#fff; font:bold 12px/22px sans-serif; text-align:center; pointer-events:auto; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.6); border:1px solid #fff; }
+  #pinList { padding:0 12px; max-height:150px; overflow:auto; }
+  .pl { display:flex; gap:6px; align-items:flex-start; margin:3px 0; }
+  .pl .num { flex:0 0 22px; height:22px; border-radius:50%; background:#e53935; color:#fff; font:bold 12px/22px sans-serif; text-align:center; margin-top:3px; }
+  .pl textarea { flex:1; min-height:30px; height:30px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:13px; }
+  .pl button { padding:2px 7px; font-size:12px; }
+  .pinbtn { margin-left:8px; padding:0 6px; font-size:12px; border-radius:10px; cursor:grab; }
   #hits { padding:4px 12px; min-height:28px; font-size:13px; color:var(--dim); }
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
   #note { margin:6px 12px 10px; height:90px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
@@ -45,10 +61,12 @@
   .line .en { font-size:12px; color:#8f9bb0; }
   .line .zh { font-size:15px; margin-top:1px; }
   #interim { padding:6px 12px; color:var(--dim); font-style:italic; min-height:34px; border-top:1px solid var(--line); }
-  #ask { padding:10px 12px; border-top:1px solid var(--line); background:var(--panel); }
+  #ask { padding:4px 12px; border-top:1px solid var(--line); background:var(--panel); }
+  #askToggle { font-size:12px; padding:2px 10px; }
+  #askBody { margin-top:6px; padding-bottom:6px; }
   #ask .row { display:flex; gap:8px; align-items:flex-start; }
-  #askIn { flex:1; height:64px; resize:vertical; line-height:1.5; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
-  #askOut { margin-top:8px; font-size:18px; color:var(--accent); min-height:24px; }
+  #askIn { flex:1; height:44px; resize:vertical; line-height:1.5; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  #askOut { margin-top:6px; font-size:16px; color:var(--accent); }
   .hint { font-size:12px; color:var(--dim); }
 </style>
 </head>
@@ -63,7 +81,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 22</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 24</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -93,11 +111,24 @@
       <span id="pageInfo">尚未載入投影片</span>
       <button id="next">下一頁 ▶</button>
     </div>
+    <div id="tools">
+      <button id="tPin" title="按一下後，在投影片上點要釘便條的位置">📌 便條</button>
+      <button id="tPen" title="用手指、觸控筆或滑鼠直接畫">✏️ 畫筆</button>
+      <span id="penOpts" hidden>
+        <button class="pc on" data-c="#e53935" data-w="3">紅</button>
+        <button class="pc" data-c="#1e6fff" data-w="3">藍</button>
+        <button class="pc" data-c="rgba(255,235,59,0.45)" data-w="16">螢光</button>
+      </span>
+      <button id="tUndo">↩ 復原</button>
+      <button id="tClear">清除本頁筆跡</button>
+      <span id="toolHint"></span>
+    </div>
     <div id="slideWrap">
       <div id="empty">請用左上角選擇 PDF 投影片。<br>沒有投影片也可以直接按「開始聽」，只用字幕翻譯。</div>
-      <canvas id="slide" hidden></canvas>
+      <div id="slideBox" hidden><canvas id="slide"></canvas><canvas id="ink"></canvas><div id="pinLayer"></div></div>
     </div>
     <div id="hits"></div>
+    <div id="pinList"></div>
     <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
   </div>
 
@@ -107,13 +138,16 @@
     <div id="interim"></div>
     <div id="diag" class="hint" style="padding:2px 12px"></div>
     <div id="ask">
-      <div class="hint">提問小幫手：用中文打想問的問題，按 Enter 變成英文問句（Shift + Enter 換行）</div>
+      <button id="askToggle" title="展開或收起提問小幫手">💬 提問小幫手 ▸</button>
+      <div id="askBody" hidden>
+      <div class="hint">用中文打想問的問題，按 Enter 變成英文問句（Shift + Enter 換行）</div>
       <div class="row">
         <textarea id="askIn" placeholder="例如：這個設定預設值是多少"></textarea>
         <button id="askGo">翻成英文</button>
         <button id="askSay">🔊 唸給我聽</button>
       </div>
       <div id="askOut"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -126,7 +160,14 @@ let curEngine = "";
 const setEngine = name => { curEngine = name; $("engine").textContent = "翻譯：" + name; };
 
 // ---------- 儲存 ----------
-let notes = {}, log = [];
+let notes = {}, log = [], annots = {}, curDoc = "";
+// 筆記、便條、筆跡都依「檔名＋頁碼」存放，換一份投影片不會互相蓋掉
+const pk = p => (curDoc ? curDoc + "#" : "") + p;
+try { annots = JSON.parse(localStorage.getItem("ch_annot") || "{}"); } catch (e) {}
+function saveA() {
+  try { localStorage.setItem("ch_annot", JSON.stringify(annots)); }
+  catch (e) { setStatus("筆跡太多，瀏覽器存不下了：請先匯出筆記，再清除紀錄", "bad"); }
+}
 try { notes = JSON.parse(localStorage.getItem("ch_notes") || "{}"); } catch (e) {}
 try { log = JSON.parse(localStorage.getItem("ch_log") || "[]"); } catch (e) {}
 function save() {
@@ -174,7 +215,7 @@ $("cfgSave").onclick = () => {
 };
 setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
-const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文，Wave Relay、MPU5、Cloud Relay、Persistent Systems 這些產品與廠商名稱也保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May、Mandy、maya、mad a、men a、man a、Manatee，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
+const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文，Wave Relay、MPU5、Cloud Relay、Persistent Systems 這些產品與廠商名稱也保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May、Mandy、maya、mad a、men a、man a、Manatee，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識，也不要用括號加註「應為…」這類修正說明，直接寫修正後的結果。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
 function buildCtx(c) {
   let s = "";
@@ -224,7 +265,8 @@ $("file").addEventListener("change", async e => {
       pageWords[i] = set;
       set.forEach(w => { docFreq[w] = (docFreq[w] || 0) + 1; });
     }
-    $("empty").hidden = true; $("slide").hidden = false;
+    curDoc = f.name; page = 0;
+    $("empty").hidden = true; $("slideBox").hidden = false;
     await showPage(1);
     setStatus("投影片已載入，共 " + pdf.numPages + " 頁", "ok");
   } catch (err) {
@@ -249,7 +291,8 @@ async function showPage(n) {
     await p.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
     page = n;
     $("pageInfo").textContent = "第 " + n + " / " + pdf.numPages + " 頁";
-    $("note").value = notes[n] || "";
+    $("note").value = notes[pk(n)] || "";
+    redrawAnnots();
   } catch (err) {
     setStatus("頁面顯示失敗：" + err.message, "bad");
   }
@@ -264,7 +307,118 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowLeft") showPage(page - 1);
   if (e.key === "ArrowRight") showPage(page + 1);
 });
-$("note").addEventListener("input", () => { if (page) { notes[page] = $("note").value; save(); } });
+$("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("note").value; save(); } });
+
+// ---------- 在投影片上做筆記：便條、畫筆 ----------
+let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null;
+const getA = () => { const k = pk(page); return annots[k] || (annots[k] = { pins: [], strokes: [] }); };
+function setTool(t, hint) {
+  tool = t;
+  $("slideBox").classList.toggle("mode-pen", tool === "pen");
+  $("slideBox").classList.toggle("mode-pin", tool === "pin");
+  $("tPin").classList.toggle("on", tool === "pin");
+  $("tPen").classList.toggle("on", tool === "pen");
+  $("penOpts").hidden = tool !== "pen";
+  $("toolHint").textContent = hint || (tool === "pin" ? "在投影片上點一下要釘的位置" : tool === "pen" ? "直接在投影片上畫，畫完再按一次畫筆關閉" : "");
+  if (tool !== "pin") pendingPin = null;
+}
+$("tPin").onclick = () => { if (!pdf) return setStatus("請先載入投影片", "bad"); setTool(tool === "pin" ? "" : "pin"); };
+$("tPen").onclick = () => { if (!pdf) return setStatus("請先載入投影片", "bad"); setTool(tool === "pen" ? "" : "pen"); };
+document.querySelectorAll("#penOpts .pc").forEach(b => {
+  b.onclick = () => {
+    document.querySelectorAll("#penOpts .pc").forEach(x => x.classList.remove("on"));
+    b.classList.add("on"); penColor = b.dataset.c; penW = +b.dataset.w;
+  };
+});
+$("tUndo").onclick = () => { if (!page) return; const a = getA(); if (a.strokes.length) { a.strokes.pop(); saveA(); redrawAnnots(); } };
+$("tClear").onclick = () => {
+  if (!page) return; const a = getA();
+  if (a.strokes.length && confirm("要清除這一頁所有的筆跡嗎？便條不會被刪除。")) { a.strokes = []; saveA(); redrawAnnots(); }
+};
+function drawInk(ctx, w, h, strokes) {
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  (strokes || []).forEach(s => {
+    if (!s.pts || s.pts.length < 2) return;
+    ctx.strokeStyle = s.c; ctx.lineWidth = Math.max(1, s.w * w / 1000);
+    ctx.beginPath(); ctx.moveTo(s.pts[0][0] * w, s.pts[0][1] * h);
+    for (let k = 1; k < s.pts.length; k++) ctx.lineTo(s.pts[k][0] * w, s.pts[k][1] * h);
+    ctx.stroke();
+  });
+}
+function redrawAnnots() {
+  const ink = $("ink"), sl = $("slide");
+  ink.width = sl.width; ink.height = sl.height;
+  const a = page ? (annots[pk(page)] || { pins: [], strokes: [] }) : { pins: [], strokes: [] };
+  const ctx = ink.getContext("2d"); ctx.clearRect(0, 0, ink.width, ink.height);
+  drawInk(ctx, ink.width, ink.height, a.strokes);
+  const layer = $("pinLayer"), list = $("pinList"); layer.textContent = ""; list.textContent = "";
+  a.pins.forEach((p, i) => {
+    const m = document.createElement("div"); m.className = "pin"; m.textContent = i + 1;
+    m.style.left = (p.x * 100) + "%"; m.style.top = (p.y * 100) + "%"; m.title = p.text || "";
+    const row = document.createElement("div"); row.className = "pl";
+    const num = document.createElement("div"); num.className = "num"; num.textContent = i + 1;
+    const ta = document.createElement("textarea"); ta.value = p.text || ""; ta.placeholder = "便條內容";
+    ta.oninput = () => { p.text = ta.value; m.title = ta.value; saveA(); };
+    const del = document.createElement("button"); del.textContent = "刪除";
+    del.onclick = () => { a.pins.splice(i, 1); saveA(); redrawAnnots(); };
+    row.append(num, ta, del); list.append(row);
+    m.onclick = ev => { ev.stopPropagation(); ta.focus(); ta.scrollIntoView({ block: "nearest" }); };
+    layer.append(m);
+  });
+}
+function addPin(clientX, clientY, data) {
+  const r = $("slide").getBoundingClientRect();
+  const x = (clientX - r.left) / r.width, y = (clientY - r.top) / r.height;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  const a = getA();
+  a.pins.push({ x: +x.toFixed(4), y: +y.toFixed(4), text: (data && data.zh) || "", en: (data && data.en) || "" });
+  saveA(); redrawAnnots();
+  if (!data) { const tas = $("pinList").querySelectorAll("textarea"); if (tas.length) tas[tas.length - 1].focus(); }
+}
+function pinFromCaption(l) {
+  if (!pdf) return setStatus("請先載入投影片，才能把字幕釘上去", "bad");
+  setTool("pin", "請在投影片上點一下，把這句釘在那個位置");
+  pendingPin = { zh: l.zh || "", en: l.en };
+}
+$("slideBox").addEventListener("click", e => {
+  if (tool !== "pin" || !page) return;
+  addPin(e.clientX, e.clientY, pendingPin);
+  setTool("");
+});
+$("slideBox").addEventListener("dragover", e => { if (page) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+$("slideBox").addEventListener("drop", e => {
+  if (!page) return; e.preventDefault();
+  let d = null; try { d = JSON.parse(e.dataTransfer.getData("text/plain")); } catch (err) {}
+  if (d && (d.zh || d.en)) addPin(e.clientX, e.clientY, d);
+});
+(function () {
+  const ink = $("ink");
+  const pos = e => { const r = ink.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  ink.addEventListener("pointerdown", e => {
+    if (tool !== "pen" || !page) return;
+    e.preventDefault(); ink.setPointerCapture(e.pointerId);
+    curStroke = { c: penColor, w: penW, pts: [pos(e)] };
+  });
+  ink.addEventListener("pointermove", e => {
+    if (!curStroke) return;
+    const p = pos(e), q = curStroke.pts[curStroke.pts.length - 1];
+    if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 0.003) return;
+    curStroke.pts.push(p);
+    const ctx = ink.getContext("2d"); ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = curStroke.c; ctx.lineWidth = Math.max(1, curStroke.w * ink.width / 1000);
+    ctx.beginPath(); ctx.moveTo(q[0] * ink.width, q[1] * ink.height); ctx.lineTo(p[0] * ink.width, p[1] * ink.height); ctx.stroke();
+  });
+  const end = () => {
+    if (!curStroke) return;
+    if (curStroke.pts.length > 1) {
+      curStroke.pts = curStroke.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]);
+      getA().strokes.push(curStroke); saveA();
+    }
+    curStroke = null; redrawAnnots();
+  };
+  ink.addEventListener("pointerup", end);
+  ink.addEventListener("pointercancel", end);
+})();
 
 // ---------- 自動對頁 ----------
 function followSlides() {
@@ -343,6 +497,12 @@ function drawLine(l, i) {
   meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.star ? "　★ 重點" : "");
   const en = document.createElement("div"); en.className = "en"; en.textContent = l.en;
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = l.zh || "翻譯中…";
+  const pb = document.createElement("button");
+  pb.className = "pinbtn"; pb.textContent = "📌"; pb.draggable = true;
+  pb.title = "把這句釘到投影片上：按一下再點投影片，或直接拖到投影片上";
+  pb.onclick = ev => { ev.stopPropagation(); pinFromCaption(l); };
+  pb.ondragstart = ev => { ev.dataTransfer.setData("text/plain", JSON.stringify({ zh: l.zh || "", en: l.en })); ev.dataTransfer.effectAllowed = "copy"; };
+  meta.append(pb);
   d.append(meta, en, zh);
   d.onclick = () => { l.star = !l.star; save(); d.replaceWith(drawLine(l, i)); };
   d.id = "line" + i;
@@ -364,11 +524,11 @@ async function addLine(en, gap) {
   const box = $("caps");
   
   let i = log.length - 1, l = log[i];
-  if (l && gap < PAUSE && l.page === (page || 0) && l.en.length + en.length < MAXLEN) {
+  if (l && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.en.length + en.length < MAXLEN) {
     l.en += " " + en;
     refresh(i);
   } else {
-    l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, en: en, zh: "", star: false };
+    l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: en, zh: "", star: false };
     i = log.push(l) - 1;
     box.append(drawLine(l, i));
   }
@@ -549,6 +709,14 @@ $("listen").onclick = () => {
 };
 
 // ---------- 提問小幫手 ----------
+function setAskOpen(open) {
+  $("askBody").hidden = !open;
+  $("askToggle").textContent = "💬 提問小幫手 " + (open ? "▾" : "▸");
+  try { localStorage.setItem("ch_ask", open ? "1" : "0"); } catch (e) {}
+  if (open) $("askIn").focus();
+}
+$("askToggle").onclick = () => setAskOpen($("askBody").hidden);
+try { if (localStorage.getItem("ch_ask") === "1") { $("askBody").hidden = false; $("askToggle").textContent = "💬 提問小幫手 ▾"; } } catch (e) {}
 async function ask() {
   let q = $("askIn").value.trim();
   if (!q) return;
@@ -580,30 +748,76 @@ $("askSay").onclick = () => {
 };
 
 // ---------- 匯出 ----------
-$("export").onclick = () => {
+async function pageImage(n, a) {
+  // 把投影片連同筆跡、便條編號畫成一張圖，放進匯出的筆記
+  const p = await pdf.getPage(n);
+  const base = p.getViewport({ scale: 1 });
+  const vp = p.getViewport({ scale: 1100 / base.width });
+  const c = document.createElement("canvas"); c.width = vp.width; c.height = vp.height;
+  const ctx = c.getContext("2d");
+  await p.render({ canvasContext: ctx, viewport: vp }).promise;
+  if (a) {
+    drawInk(ctx, c.width, c.height, a.strokes);
+    (a.pins || []).forEach((pin, i) => {
+      const x = pin.x * c.width, y = pin.y * c.height;
+      ctx.beginPath(); ctx.arc(x, y, 15, 0, Math.PI * 2); ctx.fillStyle = "#e53935"; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = "#fff"; ctx.stroke();
+      ctx.fillStyle = "#fff"; ctx.font = "bold 17px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(String(i + 1), x, y + 1);
+    });
+  }
+  return c.toDataURL("image/jpeg", 0.82);
+}
+$("export").onclick = async () => {
   const esc = t => String(t || "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const d = new Date(), pad = n => String(n).padStart(2, "0");
   const day = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
-  const pages = new Set();
-  Object.keys(notes).forEach(k => { if (notes[k] && notes[k].trim()) pages.add(+k); });
-  log.forEach(l => { if (l.star) pages.add(l.page || 0); });
+  // 找出所有有筆記、便條、筆跡或重點句的頁面
+  const secs = new Map();
+  const addSec = k => {
+    k = String(k); if (secs.has(k)) return;
+    const i = k.lastIndexOf("#");
+    secs.set(k, { key: k, doc: i < 0 ? "" : k.slice(0, i), page: +(i < 0 ? k : k.slice(i + 1)) || 0 });
+  };
+  Object.keys(notes).forEach(k => { if (notes[k] && String(notes[k]).trim()) addSec(k); });
+  Object.keys(annots).forEach(k => { const a = annots[k]; if (a && ((a.pins && a.pins.length) || (a.strokes && a.strokes.length))) addSec(k); });
+  const lk = l => (l.doc ? l.doc + "#" : "") + (l.page || 0);
+  log.forEach(l => { if (l.star) addSec(lk(l)); });
+  const list = [...secs.values()].sort((x, y) => x.doc.localeCompare(y.doc) || x.page - y.page);
+  setStatus("整理筆記中…");
+  let missing = false;
+  for (const sec of list) {
+    if (pdf && sec.doc === curDoc && sec.page >= 1 && sec.page <= pdf.numPages) {
+      try { sec.img = await pageImage(sec.page, annots[sec.key]); } catch (e) {}
+    } else if (sec.page >= 1 && sec.doc) missing = true;
+  }
   const stars = log.filter(l => l.star).length;
   let h = "<!DOCTYPE html><html lang='zh-Hant'><head><meta charset='utf-8'><title>上課筆記 " + day + "</title><style>" +
-    "body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;max-width:860px;margin:24px auto;padding:0 20px;color:#1c2430;line-height:1.6}" +
+    "body{font-family:'Microsoft JhengHei','PingFang TC',sans-serif;max-width:900px;margin:24px auto;padding:0 20px;color:#1c2430;line-height:1.6}" +
     "h1{font-size:24px;margin-bottom:4px}h2{font-size:18px;margin:28px 0 8px;padding-bottom:4px;border-bottom:2px solid #d5dbe5}" +
-    ".sum{color:#667}.pg{border:1px solid #d5dbe5;border-radius:8px;padding:10px 14px;margin:10px 0;break-inside:avoid}" +
-    ".pg h3{margin:0 0 6px;font-size:16px}.note{white-space:pre-wrap;background:#f3f6fa;border-radius:6px;padding:8px 10px;margin:6px 0}" +
-    ".lbl{font-size:12px;color:#667;margin-top:6px}.star{background:#fff3c4;border-left:4px solid #e0a800;border-radius:4px;padding:6px 10px;margin:6px 0}" +
-    ".zh{font-size:16px}.en{font-size:13px;color:#667}.row{padding:5px 10px;margin:3px 0;border-left:4px solid transparent;break-inside:avoid}" +
+    ".sum{color:#667}.pg{border:1px solid #d5dbe5;border-radius:8px;padding:10px 14px;margin:14px 0;break-inside:avoid}" +
+    ".pg h3{margin:0 0 6px;font-size:16px}.pg img{width:100%;border:1px solid #d5dbe5;border-radius:4px;margin:4px 0}" +
+    ".note{white-space:pre-wrap;background:#f3f6fa;border-radius:6px;padding:8px 10px;margin:6px 0}" +
+    ".lbl{font-size:12px;color:#667;margin-top:8px}.star{background:#fff3c4;border-left:4px solid #e0a800;border-radius:4px;padding:6px 10px;margin:6px 0}" +
+    ".pinrow{display:flex;gap:8px;margin:5px 0;align-items:flex-start}.pn{flex:0 0 22px;height:22px;border-radius:50%;background:#e53935;color:#fff;font:bold 12px/22px sans-serif;text-align:center;margin-top:2px}" +
+    ".pt{white-space:pre-wrap}.zh{font-size:16px}.en{font-size:13px;color:#667}.row{padding:5px 10px;margin:3px 0;border-left:4px solid transparent;break-inside:avoid}" +
     ".row.star{margin:6px 0}.t{font-size:11px;color:#99a}@media print{body{margin:0}}" +
     "</style></head><body>";
   h += "<h1>上課筆記</h1><div class='sum'>" + day + "　" + $("ver").textContent + "　共 " + log.length + " 段字幕，" + stars + " 句重點</div>";
-  h += "<h2>一、重點與我的筆記</h2>";
-  if (!pages.size) h += "<p class='sum'>這次沒有標重點，也沒有寫筆記。</p>";
-  [...pages].sort((a, b) => a - b).forEach(p => {
-    h += "<div class='pg'><h3>" + (p ? "投影片第 " + p + " 頁" : "還沒載入投影片時") + "</h3>";
-    if (notes[p] && notes[p].trim()) h += "<div class='lbl'>我的筆記</div><div class='note'>" + esc(notes[p].trim()) + "</div>";
-    const st = log.filter(l => l.star && (l.page || 0) === p);
+  h += "<h2>一、投影片筆記與重點</h2>";
+  if (missing) h += "<p class='sum'>有些頁面沒有附投影片圖：匯出時只能畫出「目前載入的那份 PDF」。要補圖的話，載入那份檔案後再匯出一次。</p>";
+  if (!list.length) h += "<p class='sum'>這次沒有標重點，也沒有寫筆記。</p>";
+  list.forEach(sec => {
+    const a = annots[sec.key] || { pins: [] };
+    h += "<div class='pg'><h3>" + (sec.page ? (sec.doc ? esc(sec.doc) + "　" : "") + "第 " + sec.page + " 頁" : "還沒載入投影片時") + "</h3>";
+    if (sec.img) h += "<img src='" + sec.img + "' alt='投影片第 " + sec.page + " 頁'>";
+    if (a.pins && a.pins.length) {
+      h += "<div class='lbl'>投影片上的便條</div>";
+      a.pins.forEach((p, i) => { h += "<div class='pinrow'><div class='pn'>" + (i + 1) + "</div><div><div class='pt'>" + esc(p.text) + "</div>" + (p.en ? "<div class='en'>" + esc(p.en) + "</div>" : "") + "</div></div>"; });
+    }
+    const nt = notes[sec.key];
+    if (nt && String(nt).trim()) h += "<div class='lbl'>我的筆記</div><div class='note'>" + esc(String(nt).trim()) + "</div>";
+    const st = log.filter(l => l.star && lk(l) === sec.key);
     if (st.length) h += "<div class='lbl'>重點句</div>";
     st.forEach(l => { h += "<div class='star'><div class='zh'>★ " + esc(l.zh) + "</div><div class='en'>" + esc(l.en) + "</div><div class='t'>" + esc(l.t) + "</div></div>"; });
     h += "</div>";
@@ -613,16 +827,18 @@ $("export").onclick = () => {
     h += "<div class='row" + (l.star ? " star" : "") + "'><div class='t'>" + esc(l.t) + (l.page ? "　第 " + l.page + " 頁" : "") + "</div><div class='zh'>" + (l.star ? "★ " : "") + esc(l.zh) + "</div><div class='en'>" + esc(l.en) + "</div></div>";
   });
   h += "</body></html>";
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([h], { type: "text/html" }));
-  a.download = "上課筆記-" + day + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".html";
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  const el = document.createElement("a");
+  el.href = URL.createObjectURL(new Blob([h], { type: "text/html" }));
+  el.download = "上課筆記-" + day + "-" + pad(d.getHours()) + pad(d.getMinutes()) + ".html";
+  el.click();
+  setTimeout(() => URL.revokeObjectURL(el.href), 1000);
+  setStatus("筆記已匯出", "ok");
 };
 
 $("clear").onclick = () => {
-  if (!confirm("確定要清除所有字幕和筆記嗎？建議先按「匯出筆記」。")) return;
-  log = []; notes = {}; save(); redrawAll(); $("note").value = ""; $("hits").textContent = "";
+  if (!confirm("確定要清除所有字幕、筆記、便條和筆跡嗎？建議先按「匯出筆記」。")) return;
+  log = []; notes = {}; annots = {}; save(); saveA(); redrawAll(); $("note").value = ""; $("hits").textContent = "";
+  if (pdf) redrawAnnots();
 };
 
 // ---------- 中間分隔線可左右拖曳 ----------
