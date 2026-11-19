@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上課小幫手</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Microsoft JhengHei", sans-serif; height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 8px; background: #b71c1c; color: #fff; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header button, header input { font-size: 15px; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #left { flex: 3; display: flex; flex-direction: column; padding: 8px; min-width: 0; }
+  #canvasWrap { flex: 1; overflow: auto; background: #eee; text-align: center; }
+  #note { height: 90px; width: 100%; font-size: 16px; margin-top: 6px; }
+  #right { flex: 2; display: flex; flex-direction: column; border-left: 1px solid #ccc; min-width: 0; }
+  #lines { flex: 1; overflow-y: auto; padding: 8px; }
+  .line { padding: 6px; border-bottom: 1px solid #eee; cursor: pointer; }
+  .line .en { color: #555; font-size: 15px; }
+  .line .zh { font-size: 19px; }
+  .line.star { background: #fff3c4; }
+  #interim { padding: 6px 8px; color: #999; min-height: 30px; }
+  #ask { padding: 8px; border-top: 1px solid #ccc; }
+  #ask input { width: 70%; font-size: 16px; }
+  #askOut { font-size: 18px; margin-top: 6px; color: #0d47a1; }
+</style>
+</head>
+<body>
+<header>
+  <input type="file" id="file" accept="application/pdf">
+  <button id="prev">◀</button>
+  <span id="pageLabel">0 / 0</span>
+  <button id="next">▶</button>
+  <label><input type="checkbox" id="auto" checked> 自動對頁</label>
+  <button id="mic">開始聽課</button>
+  <button id="markLast">標記上一句</button>
+  <button id="export">匯出筆記</button>
+</header>
+<main>
+  <div id="left">
+    <div id="canvasWrap"><canvas id="cv"></canvas></div>
+    <textarea id="note" placeholder="這一頁的筆記…"></textarea>
+  </div>
+  <div id="right">
+    <div id="lines"></div>
+    <div id="interim"></div>
+    <div id="ask">
+      <input id="askIn" placeholder="用中文打想問的問題">
+      <button id="askBtn">變英文</button>
+      <button id="askSay">唸給我聽</button>
+      <div id="askOut"></div>
+    </div>
+  </div>
+</main>
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $ = id => document.getElementById(id);
+let pdf = null, page = 0, pageTexts = [], renderTask = null;
+let notes = JSON.parse(localStorage.getItem("notes") || "{}");
+let log = JSON.parse(localStorage.getItem("log") || "[]");
+const save = () => {
+  localStorage.setItem("notes", JSON.stringify(notes));
+  localStorage.setItem("log", JSON.stringify(
+    log.map(l => ({ t: l.t, page: l.page, en: l.en, zh: l.zh, star: l.star }))));
+};
+
+// ---------- PDF ----------
