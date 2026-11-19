@@ -59,10 +59,11 @@
   <button id="listen">🎤 開始聽</button>
   <label><input type="checkbox" id="follow"> 自動對頁</label>
   <label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label>
+  <label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label>
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 16</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 17</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -369,7 +370,7 @@ async function addLine(en, gap) {
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let evCount = 0, lastErr = "無", lastHeard = "尚未", loudNoEvent = 0, stalls = 0, stallStreak = 0;
-function showDiag() { $("diag").textContent = "診斷：辨識事件 " + evCount + " 次｜重新連線 " + restarts + " 次（其中卡住重啟 " + stalls + " 次）｜最後錯誤 " + lastErr + "｜最後聽到字 " + lastHeard; }
+function showDiag() { $("diag").textContent = "診斷：辨識方式 " + srMode + "｜辨識事件 " + evCount + " 次｜重新連線 " + restarts + " 次（其中卡住重啟 " + stalls + " 次）｜最後錯誤 " + lastErr + "｜最後聽到字 " + lastHeard; }
 let rec = null, listening = false, lastEnd = 0, committedWords = 0, lastEvent = 0, restarts = 0;
 // Chrome 的語音辨識有時會自己卡住不出字：超過 15 秒沒動靜就重新啟動
 setInterval(() => {
@@ -384,17 +385,45 @@ function commit(text) {
     lastEnd = now;
   }
 }
+let useLocal = false, srMode = "雲端";
+async function prepareLocal() {
+  // 新版 Chrome 可以在筆電上直接辨識，不經過 Google 伺服器；不支援就回傳 false
+  try {
+    if (!$("localSR").checked || !SR.available) return false;
+    const opt = { langs: ["en-US"], processLocally: true };
+    let st = await SR.available(opt);
+    if (st === "downloadable" || st === "downloading") {
+      setStatus("第一次使用：下載本機語音辨識模型中，請稍等…");
+      await SR.install(opt);
+      st = await SR.available(opt);
+    }
+    return st === "available";
+  } catch (e) { return false; }
+}
 function startRec() {
   rec = new SR();
   rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
+  srMode = "雲端";
+  if (useLocal) {
+    try {
+      rec.processLocally = true; srMode = "本機";
+      // 把名詞表的英文交給辨識器，讓它比較容易聽出專有名詞
+      if (window.SpeechRecognitionPhrase) {
+        const terms = gloss.split("\n").map(x => x.split("=")[0].replace(/\(.*?\)/g, "").trim()).filter(x => x && x.length < 40).slice(0, 80);
+        rec.phrases = terms.map(t => new SpeechRecognitionPhrase(t, 4.0));
+        srMode = "本機＋名詞表";
+      }
+    } catch (e) {}
+  }
   committedWords = 0;
   rec.onstart = () => { lastEvent = Date.now(); loudNoEvent = 0; setStatus("聆聽中…", "ok"); };
   rec.onresult = e => {
     lastEvent = Date.now(); loudNoEvent = 0; stallStreak = 0; evCount++; lastHeard = new Date().toTimeString().slice(0, 8); showDiag();
     let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
+    for (let i = 0; i < e.results.length; i++) {
       const txt = e.results[i][0].transcript;
       if (e.results[i].isFinal) {
+        if (i < e.resultIndex) continue;   // 之前已經處理過的句子
         const w = toWords(txt);
         const rest = w.slice(committedWords).join(" ");
         committedWords = Math.max(0, committedWords - w.length);
@@ -414,6 +443,10 @@ function startRec() {
   rec.onerror = e => {
     lastErr = e.error; showDiag();
     if (e.error === "no-speech" || e.error === "aborted") return;
+    if (useLocal && (e.error === "language-not-supported" || e.error === "phrases-not-supported" || e.error === "service-not-allowed")) {
+      useLocal = false; $("localSR").checked = false;   // 本機辨識不能用：改回雲端，onend 會自動重啟
+      return;
+    }
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       listening = false; updateBtn();
       setStatus("麥克風被擋住了：請點網址列左邊的圖示，把麥克風改成允許", "bad");
@@ -475,7 +508,8 @@ $("listen").onclick = () => {
   if (listening) {
     setStatus("啟動中…");
     getTranslator("en", "zh-Hant");
-    startRec(); startMeter();
+    startMeter();
+    prepareLocal().then(ok => { useLocal = ok; if (listening) { startRec(); showDiag(); } });
   } else {
     try { rec.stop(); } catch (e) {}
     stopMeter();
