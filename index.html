@@ -60,7 +60,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 9</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 10</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -101,6 +101,7 @@
   <div id="right">
     <div id="caps"></div>
     <div id="interim"></div>
+    <div id="diag" class="hint" style="padding:2px 12px"></div>
     <div id="ask">
       <div class="hint">提問小幫手：用中文打想問的問題，按 Enter 變成英文問句（Shift + Enter 換行）</div>
       <div class="row">
@@ -354,6 +355,8 @@ async function addLine(en, gap) {
 
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let evCount = 0, lastErr = "無", lastHeard = "尚未";
+function showDiag() { $("diag").textContent = "診斷：辨識事件 " + evCount + " 次｜重新連線 " + restarts + " 次｜最後錯誤 " + lastErr + "｜最後聽到字 " + lastHeard; }
 let rec = null, listening = false, lastEnd = 0, committedWords = 0, lastEvent = 0, restarts = 0;
 // Chrome 的語音辨識有時會自己卡住不出字：超過 15 秒沒動靜就重新啟動
 setInterval(() => {
@@ -374,7 +377,7 @@ function startRec() {
   committedWords = 0;
   rec.onstart = () => { lastEvent = Date.now(); setStatus("聆聽中…", "ok"); };
   rec.onresult = e => {
-    lastEvent = Date.now();
+    lastEvent = Date.now(); evCount++; lastHeard = new Date().toTimeString().slice(0, 8); showDiag();
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const txt = e.results[i][0].transcript;
@@ -396,6 +399,7 @@ function startRec() {
     $("interim").textContent = pending.join(" ");
   };
   rec.onerror = e => {
+    lastErr = e.error; showDiag();
     if (e.error === "no-speech" || e.error === "aborted") return;
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
       listening = false; updateBtn();
@@ -414,6 +418,7 @@ function startRec() {
     const left = $("interim").textContent.trim();
     $("interim").textContent = "";
     if (left) commit(left);
+    showDiag();
     if (listening) { restarts++; setStatus("聆聽中…（已自動重新連線 " + restarts + " 次）", "ok"); setTimeout(startRec, 150); }
   };
   try { rec.start(); } catch (e) { setStatus("無法啟動：" + e.message, "bad"); }
