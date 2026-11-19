@@ -63,7 +63,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 17</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 19</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -385,7 +385,7 @@ function commit(text) {
     lastEnd = now;
   }
 }
-let useLocal = false, srMode = "雲端";
+let useLocal = false, usePhrases = false, srMode = "雲端", sessStart = 0, sessEvents = 0, quickFails = 0;
 async function prepareLocal() {
   // 新版 Chrome 可以在筆電上直接辨識，不經過 Google 伺服器；不支援就回傳 false
   try {
@@ -402,13 +402,14 @@ async function prepareLocal() {
 }
 function startRec() {
   rec = new SR();
+  sessStart = Date.now(); sessEvents = 0;
   rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
   srMode = "雲端";
   if (useLocal) {
     try {
       rec.processLocally = true; srMode = "本機";
       // 把名詞表的英文交給辨識器，讓它比較容易聽出專有名詞
-      if (window.SpeechRecognitionPhrase) {
+      if (usePhrases && window.SpeechRecognitionPhrase) {
         const terms = gloss.split("\n").map(x => x.split("=")[0].replace(/\(.*?\)/g, "").trim()).filter(x => x && x.length < 40).slice(0, 80);
         rec.phrases = terms.map(t => new SpeechRecognitionPhrase(t, 4.0));
         srMode = "本機＋名詞表";
@@ -416,9 +417,9 @@ function startRec() {
     } catch (e) {}
   }
   committedWords = 0;
-  rec.onstart = () => { lastEvent = Date.now(); loudNoEvent = 0; setStatus("聆聽中…", "ok"); };
+  rec.onstart = () => { sessStart = Date.now(); sessEvents = 0; lastEvent = Date.now(); loudNoEvent = 0; setStatus("聆聽中…", "ok"); };
   rec.onresult = e => {
-    lastEvent = Date.now(); loudNoEvent = 0; stallStreak = 0; evCount++; lastHeard = new Date().toTimeString().slice(0, 8); showDiag();
+    lastEvent = Date.now(); loudNoEvent = 0; stallStreak = 0; evCount++; sessEvents++; quickFails = 0; lastHeard = new Date().toTimeString().slice(0, 8); showDiag();
     let interim = "";
     for (let i = 0; i < e.results.length; i++) {
       const txt = e.results[i][0].transcript;
@@ -441,7 +442,7 @@ function startRec() {
     $("interim").textContent = pending.join(" ");
   };
   rec.onerror = e => {
-    lastErr = e.error; showDiag();
+    lastErr = e.error + (e.message ? "（" + e.message + "）" : ""); showDiag();
     if (e.error === "no-speech" || e.error === "aborted") return;
     if (useLocal && (e.error === "language-not-supported" || e.error === "phrases-not-supported" || e.error === "service-not-allowed")) {
       useLocal = false; $("localSR").checked = false;   // 本機辨識不能用：改回雲端，onend 會自動重啟
@@ -465,7 +466,19 @@ function startRec() {
     $("interim").textContent = "";
     if (left) commit(left);
     showDiag();
-    if (listening) { restarts++; setStatus("聆聽中…（已自動重新連線 " + restarts + " 次）", "ok"); setTimeout(startRec, 150); }
+    if (listening) {
+      restarts++;
+      // 一啟動就馬上結束、完全沒出字：連續發生表示這種辨識方式在這台電腦不能用，逐步退回
+      if (!sessEvents && Date.now() - sessStart < 2000) quickFails++; else quickFails = 0;
+      if (useLocal && quickFails >= 15) {
+        // 重試了大約 40 秒還是起不來：改回雲端辨識
+        quickFails = 0; useLocal = false; $("localSR").checked = false;
+        setStatus("這台電腦的本機語音辨識無法使用，已改回雲端辨識", "bad");
+      } else if (useLocal && quickFails >= 2) setStatus("本機語音辨識準備中（第一次會比較久，請稍等）…");
+      else if (quickFails < 3) setStatus("聆聽中…（已自動重新連線 " + restarts + " 次）", "ok");
+      else setStatus("語音辨識一直無法啟動，持續重試中…", "bad");
+      setTimeout(startRec, Math.min(150 * Math.pow(2, quickFails), 3000));
+    }
   };
   try { rec.start(); } catch (e) { setStatus("無法啟動：" + e.message, "bad"); }
 }
@@ -509,7 +522,7 @@ $("listen").onclick = () => {
     setStatus("啟動中…");
     getTranslator("en", "zh-Hant");
     startMeter();
-    prepareLocal().then(ok => { useLocal = ok; if (listening) { startRec(); showDiag(); } });
+    prepareLocal().then(ok => { useLocal = ok; quickFails = 0; if (listening) { startRec(); showDiag(); } });
   } else {
     try { rec.stop(); } catch (e) {}
     stopMeter();
