@@ -36,8 +36,8 @@
   .line .zh { font-size:19px; margin-top:2px; }
   #interim { padding:6px 12px; color:var(--dim); font-style:italic; min-height:34px; border-top:1px solid var(--line); }
   #ask { padding:10px 12px; border-top:1px solid var(--line); background:var(--panel); }
-  #ask .row { display:flex; gap:8px; }
-  #askIn { flex:1; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  #ask .row { display:flex; gap:8px; align-items:flex-start; }
+  #askIn { flex:1; height:64px; resize:vertical; line-height:1.5; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
   #askOut { margin-top:8px; font-size:18px; color:var(--accent); min-height:24px; }
   .hint { font-size:12px; color:var(--dim); }
 </style>
@@ -74,7 +74,7 @@
     <div id="ask">
       <div class="hint">提問小幫手：用中文打想問的問題，按 Enter 變成英文</div>
       <div class="row">
-        <input id="askIn" placeholder="例如：請問這個設定預設值是多少？">
+        <textarea id="askIn" placeholder="例如：這個設定預設值是多少"></textarea>
         <button id="askGo">翻成英文</button>
         <button id="askSay">🔊 唸給我聽</button>
       </div>
@@ -302,14 +302,21 @@ $("listen").onclick = () => {
 
 // ---------- 提問小幫手 ----------
 async function ask() {
-  const q = $("askIn").value.trim();
+  let q = $("askIn").value.trim();
   if (!q) return;
   $("askOut").textContent = "翻譯中…";
-  try { $("askOut").textContent = await translate(q, "zh-Hant", "en"); }
-  catch (e) { $("askOut").textContent = "（翻譯失敗：" + e.message + "）"; }
+  q = q.replace(/[。.!！?？\s]+$/, "");
+  if (!/^(請問|想請問)/.test(q)) q = "請問" + q;
+  try {
+    let en = (await translate(q + "？", "zh-Hant", "en")).trim();
+    en = en.replace(/^(excuse me|may i ask|can i ask|could i ask)[,:\s]*/i, "").replace(/[.?!\s]+$/, "");
+    $("askOut").textContent = "Excuse me. " + en.charAt(0).toUpperCase() + en.slice(1) + "?";
+  } catch (e) { $("askOut").textContent = "（翻譯失敗：" + e.message + "）"; }
 }
 $("askGo").onclick = ask;
-$("askIn").addEventListener("keydown", e => { if (e.key === "Enter" && !e.isComposing) ask(); });
+$("askIn").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(); }
+});
 $("askSay").onclick = () => {
   const t = $("askOut").textContent;
   if (!t || t.startsWith("（") || t === "翻譯中…") return;
