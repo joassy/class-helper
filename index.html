@@ -21,7 +21,7 @@
   #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
   #cfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
   #cfg input { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
-  #keyIn { width:320px; } #modelIn { width:180px; }
+  .cfgrow { flex-basis:100%; } #glossIn { width:100%; height:150px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; margin:4px 0; } #keyIn { width:320px; } #modelIn { width:180px; }
   #main { flex:1; display:flex; min-height:0; }
   #left { flex:1.3; display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--line); }
   #right { flex:1; display:flex; flex-direction:column; min-width:0; }
@@ -33,12 +33,12 @@
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
   #note { margin:6px 12px 10px; height:90px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
   #caps { flex:1; overflow:auto; padding:10px 12px; min-height:0; }
-  .line { padding:8px 10px; border-radius:6px; margin-bottom:6px; cursor:pointer; border-left:3px solid transparent; }
+  .line { padding:4px 8px; border-radius:6px; margin-bottom:2px; cursor:pointer; border-left:3px solid transparent; line-height:1.35; }
   .line:hover { background:var(--panel); }
   .line.star { background:#33290f; border-left-color:var(--accent); }
-  .line .meta { font-size:12px; color:var(--dim); }
-  .line .en { font-size:15px; color:#b9c4d6; }
-  .line .zh { font-size:19px; margin-top:2px; }
+  .line .meta { font-size:11px; color:var(--dim); }
+  .line .en { font-size:12px; color:#8f9bb0; }
+  .line .zh { font-size:15px; margin-top:1px; }
   #interim { padding:6px 12px; color:var(--dim); font-style:italic; min-height:34px; border-top:1px solid var(--line); }
   #ask { padding:10px 12px; border-top:1px solid var(--line); background:var(--panel); }
   #ask .row { display:flex; gap:8px; align-items:flex-start; }
@@ -53,6 +53,7 @@
   <label>投影片 PDF <input type="file" id="file" accept="application/pdf"></label>
   <button id="listen">🎤 開始聽</button>
   <label><input type="checkbox" id="follow" checked> 自動對頁</label>
+  <label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label>
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
@@ -64,9 +65,17 @@
   <span>AI 金鑰</span>
   <input id="keyIn" type="password" placeholder="貼上 API 金鑰（只存在這台電腦）">
   <span>模型</span>
-  <input id="modelIn" placeholder="claude-haiku-4-5">
+  <input id="modelIn" placeholder="claude-haiku-5-5">
   <button id="cfgSave">儲存</button>
   <span class="hint">留空白就用一般翻譯。金鑰不要放到 GitHub 上。</span>
+  <div class="cfgrow">
+    <label><input type="checkbox" id="sendSlide"> 把當頁投影片文字也傳給 AI 參考（教材不能外流時請不要勾）</label>
+  </div>
+  <div class="cfgrow">
+    <div class="hint">名詞表：一行一個，格式是「英文 = 中文」。可以自己增加或修改，只存在這台電腦。</div>
+    <textarea id="glossIn" spellcheck="false"></textarea>
+    <button id="glossReset">還原成預設名詞表</button>
+  </div>
 </div>
 
 <div id="main">
@@ -103,7 +112,8 @@
 <script>
 const $ = id => document.getElementById(id);
 const setStatus = (msg, cls) => { $("status").textContent = msg; $("status").className = cls || ""; };
-const setEngine = name => { $("engine").textContent = "翻譯：" + name; };
+let curEngine = "";
+const setEngine = name => { curEngine = name; $("engine").textContent = "翻譯：" + name; };
 
 // ---------- 儲存 ----------
 let notes = {}, log = [];
@@ -117,25 +127,32 @@ function save() {
 }
 
 // ---------- AI 翻譯設定 ----------
-const DEFAULT_MODEL = "claude-haiku-4-5";
+const DEFAULT_MODEL = "claude-haiku-5-5";
+const DEFAULT_GLOSS = "MANET = 行動隨意網路\nad hoc network = 隨意網路（不靠固定設施、臨時自組的網路）\nmesh network = 網狀網路\nnode = 節點\nmaster node = 主節點\nrelay = 中繼\nhop = 跳（訊號經過一個節點算一跳）\nmulti-hop = 多跳\nrouting = 路由\nrouting protocol = 路由協定\ntopology = 拓撲（網路的連接架構）\nself-forming = 自動組網\nself-configuring = 自我組態\nself-healing = 自我修復\ninfrastructure = 基礎設施\nbase station = 基地台\nrepeater = 中繼台\ngateway = 閘道\nbackhaul = 回程鏈路\nlink = 鏈路\nlink budget = 鏈路預算\nline of sight (LOS) = 視距\nnon-line of sight (NLOS) = 非視距\ncoverage = 涵蓋範圍\nrange = 通訊距離\nthroughput = 傳輸量\nbandwidth = 頻寬\nlatency = 延遲\nfrequency band = 頻段\nchannel = 頻道\nspectrum = 頻譜\ninterference = 干擾\nantenna = 天線\nomnidirectional antenna = 全向天線\ndirectional antenna = 指向天線\ngain = 增益\ntransmit power = 發射功率\nSNR (signal-to-noise ratio) = 訊雜比\nRSSI = 接收訊號強度指標\nMIMO = 多輸入多輸出\nwaveform = 波形\nencryption = 加密\npacket = 封包\npacket loss = 封包遺失\nQoS = 服務品質\nIP address = IP 位址\nsubnet = 子網路\nDHCP = 動態主機設定協定\nVLAN = 虛擬區域網路\nunicast = 單播\nmulticast = 群播\nbroadcast = 廣播\nPTT (push-to-talk) = 按鍵通話\ntalk group = 通話群組\nLMR (land mobile radio) = 陸地行動無線電\ntrunking = 集群式無線電\nDMR = 數位行動無線電\nTETRA = TETRA 數位集群無線電\nP25 = P25 數位無線電標準\ninteroperability = 互通性\nsituational awareness = 狀況覺知\nincident command = 事故現場指揮\nfirst responder = 第一線救災人員\ndeployment = 部署\nconfiguration = 設定\nfirmware = 韌體\nUAV = 無人機\nvideo streaming = 影像串流\nGNSS = 衛星定位";
+let gloss = DEFAULT_GLOSS, sendSlide = false;
+try { const g = localStorage.getItem("ch_gloss"); if (g !== null) gloss = g; sendSlide = localStorage.getItem("ch_slide") === "1"; } catch (e) {}
 let aiKey = "", aiModel = DEFAULT_MODEL;
 try { aiKey = localStorage.getItem("ch_key") || ""; aiModel = localStorage.getItem("ch_model") || DEFAULT_MODEL; } catch (e) {}
 $("keyIn").value = aiKey; $("modelIn").value = aiModel;
+$("glossIn").value = gloss; $("sendSlide").checked = sendSlide;
+$("glossReset").onclick = () => { $("glossIn").value = DEFAULT_GLOSS; };
 $("cfgBtn").onclick = () => { $("cfg").hidden = !$("cfg").hidden; };
 $("cfgSave").onclick = () => {
   aiKey = $("keyIn").value.trim();
   aiModel = $("modelIn").value.trim() || DEFAULT_MODEL;
-  try { localStorage.setItem("ch_key", aiKey); localStorage.setItem("ch_model", aiModel); } catch (e) {}
+  gloss = $("glossIn").value.trim(); sendSlide = $("sendSlide").checked;
+  try { localStorage.setItem("ch_key", aiKey); localStorage.setItem("ch_model", aiModel); localStorage.setItem("ch_gloss", gloss); localStorage.setItem("ch_slide", sendSlide ? "1" : "0"); } catch (e) {}
   $("cfg").hidden = true;
   setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 };
 setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
-const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，專有名詞請用台灣消防界慣用的說法。語音辨識可能有錯字，請依上下文和投影片合理修正。只輸出翻譯，不要加任何說明。";
+const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。只輸出翻譯，不要加任何說明。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
 function buildCtx(c) {
   let s = "";
-  if (c && c.slide) s += "目前投影片上的文字（只供參考，不要翻譯）：\n" + c.slide + "\n\n";
+  if (gloss) s += "名詞表（左邊英文、右邊是要用的中文說法；聽錯成發音相近的字時請修正）：\n" + gloss + "\n\n";
+  if (sendSlide && c && c.slide) s += "目前投影片上的文字（只供參考，不要翻譯）：\n" + c.slide + "\n\n";
   if (c && c.prev) s += "老師前一段說的話（只供參考，不要翻譯）：\n" + c.prev + "\n\n";
   return s;
 }
@@ -280,13 +297,13 @@ async function translate(text, from, to, ctx) {
 }
 
 // ---------- 字幕（整段翻譯）----------
-const PAUSE = 3000, MAXLEN = 320;
+const PAUSE = 3000, MAXLEN = 260, CHUNK_WORDS = 28, HOLD_WORDS = 5;
 function drawLine(l, i) {
   const d = document.createElement("div");
   d.className = "line" + (l.star ? " star" : "");
   d.title = "點一下標成重點";
   const meta = document.createElement("div"); meta.className = "meta";
-  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.star ? "　★ 重點" : "");
+  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.star ? "　★ 重點" : "");
   const en = document.createElement("div"); en.className = "en"; en.textContent = l.en;
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = l.zh || "翻譯中…";
   d.append(meta, en, zh);
@@ -303,13 +320,14 @@ function redrawAll() {
   log.forEach((l, i) => $("caps").append(drawLine(l, i)));
   $("caps").scrollTop = $("caps").scrollHeight;
 }
+function toBottom() { if ($("autoscroll").checked) $("caps").scrollTop = $("caps").scrollHeight; }
 async function addLine(en, gap) {
   en = en.trim();
   if (!en) return;
   const box = $("caps");
-  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+  
   let i = log.length - 1, l = log[i];
-  if (l && gap < PAUSE && l.page === (page || 0) && l.en.length < MAXLEN) {
+  if (l && gap < PAUSE && l.page === (page || 0) && l.en.length + en.length < MAXLEN) {
     l.en += " " + en;
     refresh(i);
   } else {
@@ -319,35 +337,53 @@ async function addLine(en, gap) {
   }
   l.v = (l.v || 0) + 1;
   const v = l.v;
-  if (atBottom) box.scrollTop = box.scrollHeight;
+  toBottom();
   followSlides();
   let zh;
   try { zh = await translate(l.en, "en", "zh-Hant", { slide: pageText[l.page] || "", prev: i > 0 ? log[i - 1].en : "" }); }
   catch (e) { zh = "（翻譯失敗：" + e.message + "）"; }
   if (l.v !== v) return;
-  l.zh = zh; save(); refresh(i);
-  if (atBottom) box.scrollTop = box.scrollHeight;
+  l.zh = zh; l.eng = curEngine; save(); refresh(i);
+  toBottom();
 }
 
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false, uttStart = 0, lastEnd = 0;
+let rec = null, listening = false, lastEnd = 0, committedWords = 0;
+const toWords = t => t.trim().split(/\s+/).filter(Boolean);
+function commit(text) {
+  const w = toWords(text);
+  for (let k = 0; k < w.length; k += 40) {
+    const now = Date.now();
+    addLine(w.slice(k, k + 40).join(" "), lastEnd ? now - lastEnd : Infinity);
+    lastEnd = now;
+  }
+}
 function startRec() {
   rec = new SR();
   rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
+  committedWords = 0;
   rec.onstart = () => setStatus("聆聽中…", "ok");
   rec.onresult = e => {
-    if (!uttStart) uttStart = Date.now();
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const txt = e.results[i][0].transcript;
       if (e.results[i].isFinal) {
-        addLine(txt, lastEnd ? uttStart - lastEnd : Infinity);
-        lastEnd = Date.now(); uttStart = lastEnd;
-      } else interim += txt;
+        const w = toWords(txt);
+        const rest = w.slice(committedWords).join(" ");
+        committedWords = Math.max(0, committedWords - w.length);
+        if (rest) commit(rest);
+      } else interim += " " + txt;
     }
-    if (!interim) uttStart = 0;
-    $("interim").textContent = interim;
+    // 老師一直講沒停頓時，不等辨識結束，先把前面穩定的部分切出來翻
+    let pending = toWords(interim).slice(committedWords);
+    if (pending.length >= CHUNK_WORDS + HOLD_WORDS) {
+      const take = pending.length - HOLD_WORDS;
+      commit(pending.slice(0, take).join(" "));
+      committedWords += take;
+      pending = pending.slice(take);
+    }
+    $("interim").textContent = pending.join(" ");
   };
   rec.onerror = e => {
     if (e.error === "no-speech" || e.error === "aborted") return;
@@ -362,7 +398,7 @@ function startRec() {
       setStatus("語音辨識錯誤：" + e.error, "bad");
     }
   };
-  rec.onend = () => { if (listening) { try { rec.start(); } catch (e) { setTimeout(startRec, 500); } } };
+  rec.onend = () => { committedWords = 0; if (listening) { try { rec.start(); } catch (e) { setTimeout(startRec, 500); } } };
   try { rec.start(); } catch (e) { setStatus("無法啟動：" + e.message, "bad"); }
 }
 function updateBtn() {
