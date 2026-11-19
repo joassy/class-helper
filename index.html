@@ -44,15 +44,18 @@
   #slideBox.mode-pin { cursor:copy; }
   #pinLayer { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   .pin { position:absolute; transform:translate(-50%,-50%); width:22px; height:22px; border-radius:50%; background:#e53935; color:#fff; font:bold 12px/22px sans-serif; text-align:center; pointer-events:auto; cursor:pointer; box-shadow:0 1px 4px rgba(0,0,0,.6); border:1px solid #fff; }
-  #pinList { padding:0 12px; max-height:150px; overflow:auto; }
-  .pl { display:flex; gap:6px; align-items:flex-start; margin:3px 0; }
-  .pl .num { flex:0 0 22px; height:22px; border-radius:50%; background:#e53935; color:#fff; font:bold 12px/22px sans-serif; text-align:center; margin-top:3px; }
-  .pl textarea { flex:1; min-height:30px; height:30px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:13px; }
-  .pl button { padding:2px 7px; font-size:12px; }
+  .pin { touch-action:none; cursor:grab; user-select:none; }
+  .pin.sel { outline:3px solid var(--accent); }
+  #pinPop { position:fixed; z-index:50; width:300px; background:var(--panel); border:1px solid var(--accent); border-radius:8px; padding:8px; box-shadow:0 6px 24px rgba(0,0,0,.6); }
+  #pinPop .ph { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  #pinPop .num { flex:0 0 22px; height:22px; border-radius:50%; background:#e53935; color:#fff; font:bold 12px/22px sans-serif; text-align:center; }
+  #pinPop textarea { width:100%; height:90px; resize:vertical; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px; font-size:14px; }
+  #pinPop .pf { display:flex; justify-content:space-between; margin-top:6px; }
+  #pinPop button { padding:3px 12px; font-size:13px; }
   .pinbtn { margin-left:8px; padding:0 6px; font-size:12px; border-radius:10px; cursor:grab; }
   #hits { padding:4px 12px; min-height:28px; font-size:13px; color:var(--dim); }
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
-  #note { margin:6px 12px 10px; height:90px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  #note { margin:6px 12px 10px; height:54px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
   #caps { flex:1; overflow:auto; padding:10px 12px; min-height:0; }
   .line { padding:4px 8px; border-radius:6px; margin-bottom:2px; cursor:pointer; border-left:3px solid transparent; line-height:1.35; }
   .line:hover { background:var(--panel); }
@@ -81,7 +84,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 24</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 25</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -128,7 +131,6 @@
       <div id="slideBox" hidden><canvas id="slide"></canvas><canvas id="ink"></canvas><div id="pinLayer"></div></div>
     </div>
     <div id="hits"></div>
-    <div id="pinList"></div>
     <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
   </div>
 
@@ -150,6 +152,12 @@
       </div>
     </div>
   </div>
+</div>
+
+<div id="pinPop" hidden>
+  <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
+  <textarea id="popText" placeholder="便條內容"></textarea>
+  <div class="pf"><button id="popDel">刪除</button><button id="popOk">完成</button></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -351,21 +359,64 @@ function redrawAnnots() {
   const a = page ? (annots[pk(page)] || { pins: [], strokes: [] }) : { pins: [], strokes: [] };
   const ctx = ink.getContext("2d"); ctx.clearRect(0, 0, ink.width, ink.height);
   drawInk(ctx, ink.width, ink.height, a.strokes);
-  const layer = $("pinLayer"), list = $("pinList"); layer.textContent = ""; list.textContent = "";
+  const layer = $("pinLayer"); layer.textContent = "";
+  closePop();
   a.pins.forEach((p, i) => {
     const m = document.createElement("div"); m.className = "pin"; m.textContent = i + 1;
     m.style.left = (p.x * 100) + "%"; m.style.top = (p.y * 100) + "%"; m.title = p.text || "";
-    const row = document.createElement("div"); row.className = "pl";
-    const num = document.createElement("div"); num.className = "num"; num.textContent = i + 1;
-    const ta = document.createElement("textarea"); ta.value = p.text || ""; ta.placeholder = "便條內容";
-    ta.oninput = () => { p.text = ta.value; m.title = ta.value; saveA(); };
-    const del = document.createElement("button"); del.textContent = "刪除";
-    del.onclick = () => { a.pins.splice(i, 1); saveA(); redrawAnnots(); };
-    row.append(num, ta, del); list.append(row);
-    m.onclick = ev => { ev.stopPropagation(); ta.focus(); ta.scrollIntoView({ block: "nearest" }); };
+    // 按住拖曳可以移動位置；沒有移動就當成點一下，打開便條內容
+    let sx = 0, sy = 0, moved = false, down = false;
+    m.addEventListener("pointerdown", e => { e.stopPropagation(); e.preventDefault(); down = true; moved = false; sx = e.clientX; sy = e.clientY; m.setPointerCapture(e.pointerId); });
+    m.addEventListener("pointermove", e => {
+      if (!down) return;
+      if (!moved && Math.abs(e.clientX - sx) + Math.abs(e.clientY - sy) < 5) return;
+      moved = true; closePop();
+      const r = $("slide").getBoundingClientRect();
+      p.x = +Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)).toFixed(4);
+      p.y = +Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)).toFixed(4);
+      m.style.left = (p.x * 100) + "%"; m.style.top = (p.y * 100) + "%";
+    });
+    const up = () => { if (!down) return; down = false; if (moved) saveA(); else openPop(i); };
+    m.addEventListener("pointerup", up);
+    m.addEventListener("pointercancel", () => { down = false; if (moved) saveA(); });
+    m.addEventListener("click", e => e.stopPropagation());
     layer.append(m);
   });
+  $("toolHint").textContent = tool ? $("toolHint").textContent : (a.pins.length ? "本頁 " + a.pins.length + " 則便條：點圖釘看內容，按住可拖曳" : "");
 }
+let popIdx = -1;
+function closePop() {
+  $("pinPop").hidden = true; popIdx = -1;
+  document.querySelectorAll(".pin.sel").forEach(x => x.classList.remove("sel"));
+}
+function openPop(i) {
+  const a = annots[pk(page)]; if (!a || !a.pins[i]) return;
+  const marks = $("pinLayer").children, m = marks[i]; if (!m) return;
+  closePop(); popIdx = i; m.classList.add("sel");
+  $("popNum").textContent = i + 1; $("popText").value = a.pins[i].text || "";
+  const pop = $("pinPop"); pop.hidden = false;
+  const r = m.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = r.right + 8, y = r.top - 10;
+  if (x + pw > innerWidth - 8) x = r.left - pw - 8;
+  if (x < 8) x = 8;
+  if (y + ph > innerHeight - 8) y = innerHeight - ph - 8;
+  if (y < 8) y = 8;
+  pop.style.left = x + "px"; pop.style.top = y + "px";
+  $("popText").focus();
+}
+$("popText").addEventListener("input", () => {
+  const a = annots[pk(page)]; if (!a || !a.pins[popIdx]) return;
+  a.pins[popIdx].text = $("popText").value; saveA();
+  const m = $("pinLayer").children[popIdx]; if (m) m.title = $("popText").value;
+});
+$("popOk").onclick = closePop;
+$("popDel").onclick = () => { const a = annots[pk(page)]; if (a && a.pins[popIdx]) { a.pins.splice(popIdx, 1); saveA(); redrawAnnots(); } };
+$("popText").addEventListener("keydown", e => { if (e.key === "Escape") closePop(); });
+document.addEventListener("pointerdown", e => {
+  if ($("pinPop").hidden) return;
+  if (e.target.closest("#pinPop") || e.target.classList.contains("pin")) return;
+  closePop();
+});
 function addPin(clientX, clientY, data) {
   const r = $("slide").getBoundingClientRect();
   const x = (clientX - r.left) / r.width, y = (clientY - r.top) / r.height;
@@ -373,7 +424,7 @@ function addPin(clientX, clientY, data) {
   const a = getA();
   a.pins.push({ x: +x.toFixed(4), y: +y.toFixed(4), text: (data && data.zh) || "", en: (data && data.en) || "" });
   saveA(); redrawAnnots();
-  if (!data) { const tas = $("pinList").querySelectorAll("textarea"); if (tas.length) tas[tas.length - 1].focus(); }
+  if (!data) openPop(a.pins.length - 1);
 }
 function pinFromCaption(l) {
   if (!pdf) return setStatus("請先載入投影片，才能把字幕釘上去", "bad");
