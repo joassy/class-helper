@@ -62,7 +62,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 13</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 14</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -156,16 +156,15 @@ $("cfgSave").onclick = () => {
 };
 setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
-const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。只翻譯 <翻譯這段> 標籤裡的內容；<前一段> 和名詞表只是參考，絕對不要把前一段的內容再翻一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
+const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
 function buildCtx(c) {
   let s = "";
   if (gloss) s += "名詞表（左邊英文、右邊是要用的中文說法；聽錯成發音相近的字時請修正）：\n" + gloss + "\n\n";
   if (sendSlide && c && c.slide) s += "目前投影片上的文字（只供參考，不要翻譯）：\n" + c.slide + "\n\n";
-  if (c && c.prev) s += "<前一段>\n" + c.prev + "\n</前一段>\n\n";
   return s;
 }
-async function callAI(system, user) {
+async function callAI(system, user, history) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -174,7 +173,7 @@ async function callAI(system, user) {
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true"
     },
-    body: JSON.stringify({ model: aiModel, max_tokens: 700, system: system, messages: [{ role: "user", content: user }] })
+    body: JSON.stringify({ model: aiModel, max_tokens: 700, system: system, messages: (history || []).concat([{ role: "user", content: user }]) })
   });
   const j = await r.json();
   if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
@@ -292,7 +291,9 @@ async function getTranslator(from, to) {
 async function translate(text, from, to, ctx) {
   if (aiKey && from === "en") {
     try {
-      const out = await callAI(SYS_TR, buildCtx(ctx) + "<翻譯這段>\n" + text + "\n</翻譯這段>");
+      // 前一段用「上一輪對話」的方式給 AI 看，它就只會接著翻新的這段，不會重翻
+      const hist = (ctx && ctx.prev && ctx.prevZh) ? [{ role: "user", content: ctx.prev }, { role: "assistant", content: ctx.prevZh }] : [];
+      const out = await callAI(SYS_TR + "\n\n" + buildCtx(ctx), text, hist);
       if (out) { setEngine("AI"); return out; }
     } catch (e) { setStatus("AI 翻譯失敗，先改用一般翻譯：" + e.message, "bad"); }
   }
@@ -349,7 +350,7 @@ async function addLine(en, gap) {
   toBottom();
   followSlides();
   let zh;
-  try { zh = await translate(l.en, "en", "zh-Hant", { slide: pageText[l.page] || "", prev: i > 0 ? log[i - 1].en : "" }); }
+  try { zh = await translate(l.en, "en", "zh-Hant", { slide: pageText[l.page] || "", prev: i > 0 ? log[i - 1].en : "", prevZh: i > 0 ? (log[i - 1].zh || "") : "" }); }
   catch (e) { zh = "（翻譯失敗：" + e.message + "）"; }
   if (l.v !== v) return;
   l.zh = zh; l.eng = curEngine; save(); refresh(i);
