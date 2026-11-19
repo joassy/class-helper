@@ -349,7 +349,11 @@ async function addLine(en, gap) {
 
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, listening = false, lastEnd = 0, committedWords = 0;
+let rec = null, listening = false, lastEnd = 0, committedWords = 0, lastEvent = 0, restarts = 0;
+// Chrome 的語音辨識有時會自己卡住不出字：超過 15 秒沒動靜就重新啟動
+setInterval(() => {
+  if (listening && rec && Date.now() - lastEvent > 15000) { lastEvent = Date.now(); try { rec.abort(); } catch (e) {} }
+}, 3000);
 const toWords = t => t.trim().split(/\s+/).filter(Boolean);
 function commit(text) {
   const w = toWords(text);
@@ -363,8 +367,9 @@ function startRec() {
   rec = new SR();
   rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
   committedWords = 0;
-  rec.onstart = () => setStatus("聆聽中…", "ok");
+  rec.onstart = () => { lastEvent = Date.now(); setStatus("聆聽中…", "ok"); };
   rec.onresult = e => {
+    lastEvent = Date.now();
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const txt = e.results[i][0].transcript;
@@ -398,7 +403,14 @@ function startRec() {
       setStatus("語音辨識錯誤：" + e.error, "bad");
     }
   };
-  rec.onend = () => { committedWords = 0; if (listening) { try { rec.start(); } catch (e) { setTimeout(startRec, 500); } } };
+  rec.onend = () => {
+    committedWords = 0;
+    // 辨識中斷時，把還沒送出的字先收下來，再馬上重新開始聽
+    const left = $("interim").textContent.trim();
+    $("interim").textContent = "";
+    if (left) commit(left);
+    if (listening) { restarts++; setStatus("聆聽中…（已自動重新連線 " + restarts + " 次）", "ok"); setTimeout(startRec, 150); }
+  };
   try { rec.start(); } catch (e) { setStatus("無法啟動：" + e.message, "bad"); }
 }
 function updateBtn() {
