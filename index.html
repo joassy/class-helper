@@ -40,6 +40,16 @@
   #toolHint { color:var(--accent); font-size:13px; }
   #slideBox { position:relative; display:inline-block; line-height:0; max-width:100%; }
   #ink { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+  #slideBox.mode-erase #ink { pointer-events:auto; touch-action:none; cursor:cell; }
+  #penOnlyBox { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:4px; }
+  #ptrType { font-size:12px; color:var(--dim); }
+  #left.popped { flex:1 1 auto !important; min-width:0; min-height:0; border-right:none; }
+  #left.popped #nav, #left.popped #tools { padding:6px 10px; gap:8px; }
+  #left.popped button { padding:9px 14px; font-size:16px; }
+  #left.popped #hits { display:none; }
+  #left.popped #note { height:40px; }
+  #left.popped #slideWrap { display:flex; justify-content:center; align-items:flex-start; padding:0 6px; }
+  #left.popped .pin { width:30px; height:30px; font:bold 15px/30px sans-serif; }
   #inkPred { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   #slideBox.mode-pen #ink { pointer-events:auto; touch-action:none; cursor:crosshair; }
   #slideBox.mode-pin { cursor:copy; }
@@ -83,9 +93,10 @@
   <label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label>
   <label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label>
   <button id="export">⬇ 匯出筆記</button>
+  <button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 27</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 29</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -114,6 +125,9 @@
       <button id="prev">◀ 上一頁</button>
       <span id="pageInfo">尚未載入投影片</span>
       <button id="next">下一頁 ▶</button>
+      <button id="fsBtn" hidden>⛶ 全螢幕</button>
+      <button id="dockBtn" hidden>↩ 收回筆電</button>
+      <span id="ptrType"></span>
     </div>
     <div id="tools">
       <button id="tPin" title="按一下後，在投影片上點要釘便條的位置">📌 便條</button>
@@ -123,8 +137,10 @@
         <button class="pc" data-c="#1e6fff" data-w="3">藍</button>
         <button class="pc" data-c="rgba(255,235,59,0.45)" data-w="16">螢光</button>
       </span>
+      <button id="tErase" title="在筆跡上劃過，擦掉整筆">🧽 橡皮擦</button>
       <button id="tUndo">↩ 復原</button>
       <button id="tClear">清除本頁筆跡</button>
+      <label id="penOnlyBox" title="勾選後，手指和手掌碰到投影片不會留下筆跡"><input type="checkbox" id="penOnly"> 只有筆尖能畫</label>
       <span id="toolHint"></span>
     </div>
     <div id="slideWrap">
@@ -133,6 +149,11 @@
     </div>
     <div id="hits"></div>
     <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
+    <div id="pinPop" hidden>
+      <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
+      <textarea id="popText" placeholder="便條內容"></textarea>
+      <div class="pf"><button id="popDel">刪除</button><button id="popOk">完成</button></div>
+    </div>
   </div>
 
   <div id="split" title="左右拖曳調整寬度"></div>
@@ -155,15 +176,11 @@
   </div>
 </div>
 
-<div id="pinPop" hidden>
-  <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
-  <textarea id="popText" placeholder="便條內容"></textarea>
-  <div class="pf"><button id="popDel">刪除</button><button id="popOk">完成</button></div>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
-const $ = id => document.getElementById(id);
+let slideDoc = null, slideWin = null;   // 投影片拆到獨立視窗時，那個視窗和它的文件
+const $ = id => document.getElementById(id) || (slideDoc ? slideDoc.getElementById(id) : null);
 const setStatus = (msg, cls) => { $("status").textContent = msg; $("status").className = cls || ""; };
 let curEngine = "";
 const setEngine = name => { curEngine = name; $("engine").textContent = "翻譯：" + name; };
@@ -274,7 +291,7 @@ $("file").addEventListener("change", async e => {
       pageWords[i] = set;
       set.forEach(w => { docFreq[w] = (docFreq[w] || 0) + 1; });
     }
-    curDoc = f.name; page = 0;
+    curDoc = f.name; page = 0; wantPage = 0;
     $("empty").hidden = true; $("slideBox").hidden = false;
     await showPage(1);
     setStatus("投影片已載入，共 " + pdf.numPages + " 頁", "ok");
@@ -286,13 +303,17 @@ $("file").addEventListener("change", async e => {
 async function showPage(n) {
   if (!pdf) return;
   n = Math.max(1, Math.min(pdf.numPages, n));
+  wantPage = n;   // 連按兩次翻頁時，第二次要從「正要去的那一頁」算起
   if (rendering) { pendingPage = n; return; }
   rendering = true;
   try {
     const p = await pdf.getPage(n);
     const base = p.getViewport({ scale: 1 });
-    const width = Math.max(300, $("slideWrap").clientWidth - 24);
-    const dpr = window.devicePixelRatio || 1;
+    const wrap = $("slideWrap"), win = wrap.ownerDocument.defaultView || window;
+    let width = Math.max(300, wrap.clientWidth - 24);
+    // 獨立視窗時讓整頁剛好放進視窗，不用捲動
+    if (slideDoc) width = Math.max(300, Math.min(wrap.clientWidth - 12, (wrap.clientHeight - 6) * base.width / base.height));
+    const dpr = win.devicePixelRatio || 1;
     const vp = p.getViewport({ scale: (width / base.width) * dpr });
     const c = $("slide");
     c.width = vp.width; c.height = vp.height;
@@ -307,44 +328,69 @@ async function showPage(n) {
   }
   rendering = false;
   if (pendingPage) { const q = pendingPage; pendingPage = 0; if (q !== page) showPage(q); }
+  else wantPage = page;
 }
-$("prev").onclick = () => showPage(page - 1);
-$("next").onclick = () => showPage(page + 1);
+let wantPage = 0;
+const turn = d => showPage((wantPage || page) + d);
+$("prev").onclick = () => turn(-1);
+$("next").onclick = () => turn(1);
 window.addEventListener("resize", () => { if (pdf) showPage(page); });
-document.addEventListener("keydown", e => {
+function navKeys(e) {
   if (["INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
-  if (e.key === "ArrowLeft") showPage(page - 1);
-  if (e.key === "ArrowRight") showPage(page + 1);
-});
+  if (e.key === "ArrowLeft") turn(-1);
+  if (e.key === "ArrowRight") turn(1);
+}
+document.addEventListener("keydown", navKeys);
 $("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("note").value; save(); } });
 
 // ---------- 在投影片上做筆記：便條、畫筆 ----------
 // 請瀏覽器用低延遲的方式更新筆跡畫面（必須在第一次取得畫布時設定）
 try { $("ink").getContext("2d", { desynchronized: true }); $("inkPred").getContext("2d", { desynchronized: true }); } catch (e) {}
-let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null;
+let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null, erasing = null;
+let penOnly = false, penChosen = false;
+const undoStack = [];
+function pushUndo(prev) { undoStack.push({ k: pk(page), prev: prev }); if (undoStack.length > 200) undoStack.shift(); }
+function notePtr(e) {
+  $("ptrType").textContent = "輸入：" + ({ pen: "筆", touch: "手指", mouse: "滑鼠" }[e.pointerType] || e.pointerType);
+  // 第一次偵測到觸控筆，就自動改成只有筆尖能畫，手掌靠著也不會留下筆跡
+  if (e.pointerType === "pen" && !penChosen) { penChosen = true; penOnly = true; $("penOnly").checked = true; }
+}
+$("penOnly").onchange = () => { penOnly = $("penOnly").checked; penChosen = true; };
 const getA = () => { const k = pk(page); return annots[k] || (annots[k] = { pins: [], strokes: [] }); };
 function setTool(t, hint) {
   tool = t;
   $("slideBox").classList.toggle("mode-pen", tool === "pen");
   $("slideBox").classList.toggle("mode-pin", tool === "pin");
+  $("slideBox").classList.toggle("mode-erase", tool === "erase");
+  $("tErase").classList.toggle("on", tool === "erase");
   $("tPin").classList.toggle("on", tool === "pin");
   $("tPen").classList.toggle("on", tool === "pen");
   $("penOpts").hidden = tool !== "pen";
-  $("toolHint").textContent = hint || (tool === "pin" ? "在投影片上點一下要釘的位置" : tool === "pen" ? "直接在投影片上畫，畫完再按一次畫筆關閉" : "");
+  $("toolHint").textContent = hint || (tool === "pin" ? "在投影片上點一下要釘的位置" : tool === "pen" ? "直接在投影片上畫，畫完再按一次畫筆關閉" : tool === "erase" ? "在筆跡上劃過就會擦掉那一筆" : "");
   if (tool !== "pin") pendingPin = null;
 }
 $("tPin").onclick = () => { if (!pdf) return setStatus("請先載入投影片", "bad"); setTool(tool === "pin" ? "" : "pin"); };
 $("tPen").onclick = () => { if (!pdf) return setStatus("請先載入投影片", "bad"); setTool(tool === "pen" ? "" : "pen"); };
-document.querySelectorAll("#penOpts .pc").forEach(b => {
+$("tErase").onclick = () => { if (!pdf) return setStatus("請先載入投影片", "bad"); setTool(tool === "erase" ? "" : "erase"); };
+const penBtns = [...document.querySelectorAll("#penOpts .pc")];
+penBtns.forEach(b => {
   b.onclick = () => {
-    document.querySelectorAll("#penOpts .pc").forEach(x => x.classList.remove("on"));
+    penBtns.forEach(x => x.classList.remove("on"));
     b.classList.add("on"); penColor = b.dataset.c; penW = +b.dataset.w;
   };
 });
-$("tUndo").onclick = () => { if (!page) return; const a = getA(); if (a.strokes.length) { a.strokes.pop(); saveA(); redrawAnnots(); } };
+$("tUndo").onclick = () => {
+  if (!page) return; const a = getA(), k = pk(page);
+  let i = undoStack.length - 1; while (i >= 0 && undoStack[i].k !== k) i--;
+  if (i >= 0) a.strokes = undoStack.splice(i, 1)[0].prev;      // 復原上一個動作（畫、擦、清除都算）
+  else if (a.strokes.length) a.strokes.pop();
+  else return;
+  saveA(); paintInk();
+};
 $("tClear").onclick = () => {
   if (!page) return; const a = getA();
-  if (a.strokes.length && confirm("要清除這一頁所有的筆跡嗎？便條不會被刪除。")) { a.strokes = []; saveA(); redrawAnnots(); }
+  const ask = (leftEl.ownerDocument.defaultView || window).confirm("要清除這一頁所有的筆跡嗎？便條不會被刪除。");
+  if (a.strokes.length && ask) { pushUndo(a.strokes.slice()); a.strokes = []; saveA(); paintInk(); }
 };
 function drawInk(ctx, w, h, strokes) {
   ctx.lineCap = "round"; ctx.lineJoin = "round";
@@ -355,6 +401,11 @@ function drawInk(ctx, w, h, strokes) {
     for (let k = 1; k < s.pts.length; k++) ctx.lineTo(s.pts[k][0] * w, s.pts[k][1] * h);
     ctx.stroke();
   });
+}
+function paintInk() {
+  const ink = $("ink"), a = page ? annots[pk(page)] : null;
+  const ctx = ink.getContext("2d"); ctx.clearRect(0, 0, ink.width, ink.height);
+  drawInk(ctx, ink.width, ink.height, a ? a.strokes : []);
 }
 function redrawAnnots() {
   const ink = $("ink"), sl = $("slide");
@@ -391,7 +442,7 @@ function redrawAnnots() {
 let popIdx = -1;
 function closePop() {
   $("pinPop").hidden = true; popIdx = -1;
-  document.querySelectorAll(".pin.sel").forEach(x => x.classList.remove("sel"));
+  $("pinLayer").querySelectorAll(".pin.sel").forEach(x => x.classList.remove("sel"));
 }
 function openPop(i) {
   const a = annots[pk(page)]; if (!a || !a.pins[i]) return;
@@ -401,9 +452,10 @@ function openPop(i) {
   const pop = $("pinPop"); pop.hidden = false;
   const r = m.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
   let x = r.right + 8, y = r.top - 10;
-  if (x + pw > innerWidth - 8) x = r.left - pw - 8;
+  const win = pop.ownerDocument.defaultView || window;
+  if (x + pw > win.innerWidth - 8) x = r.left - pw - 8;
   if (x < 8) x = 8;
-  if (y + ph > innerHeight - 8) y = innerHeight - ph - 8;
+  if (y + ph > win.innerHeight - 8) y = win.innerHeight - ph - 8;
   if (y < 8) y = 8;
   pop.style.left = x + "px"; pop.style.top = y + "px";
   $("popText").focus();
@@ -416,11 +468,12 @@ $("popText").addEventListener("input", () => {
 $("popOk").onclick = closePop;
 $("popDel").onclick = () => { const a = annots[pk(page)]; if (a && a.pins[popIdx]) { a.pins.splice(popIdx, 1); saveA(); redrawAnnots(); } };
 $("popText").addEventListener("keydown", e => { if (e.key === "Escape") closePop(); });
-document.addEventListener("pointerdown", e => {
+function popOutside(e) {
   if ($("pinPop").hidden) return;
   if (e.target.closest("#pinPop") || e.target.classList.contains("pin")) return;
   closePop();
-});
+}
+document.addEventListener("pointerdown", popOutside);
 function addPin(clientX, clientY, data) {
   const r = $("slide").getBoundingClientRect();
   const x = (clientX - r.left) / r.width, y = (clientY - r.top) / r.height;
@@ -435,8 +488,10 @@ function pinFromCaption(l) {
   setTool("pin", "請在投影片上點一下，把這句釘在那個位置");
   pendingPin = { zh: l.zh || "", en: l.en };
 }
+$("slideBox").addEventListener("pointerdown", notePtr, true);
 $("slideBox").addEventListener("click", e => {
   if (tool !== "pin" || !page) return;
+  if (penOnly && e.pointerType === "touch") return;
   addPin(e.clientX, e.clientY, pendingPin);
   setTool("");
 });
@@ -449,12 +504,31 @@ $("slideBox").addEventListener("drop", e => {
 (function () {
   const ink = $("ink");
   const pos = e => { const r = ink.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  // 點到線段的距離（像素），用來判斷橡皮擦有沒有碰到某一筆
+  const segDist = (px, py, ax, ay, bx, by) => {
+    const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0; t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+  };
+  const eraseAt = ev => {
+    const r = ink.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top, a = getA();
+    const keep = a.strokes.filter(s => {
+      const lim = 9 + s.w * r.width / 2000;
+      for (let k = 1; k < s.pts.length; k++)
+        if (segDist(x, y, s.pts[k - 1][0] * r.width, s.pts[k - 1][1] * r.height, s.pts[k][0] * r.width, s.pts[k][1] * r.height) < lim) return false;
+      return true;
+    });
+    if (keep.length !== a.strokes.length) { a.strokes = keep; erasing.hit = true; paintInk(); }
+  };
   ink.addEventListener("pointerdown", e => {
-    if (tool !== "pen" || !page) return;
+    if (!page || (tool !== "pen" && tool !== "erase")) return;
+    if (penOnly && e.pointerType === "touch") return;
     e.preventDefault(); ink.setPointerCapture(e.pointerId);
+    if (tool === "erase") { erasing = { prev: getA().strokes.slice(), hit: false }; eraseAt(e); return; }
     curStroke = { c: penColor, w: penW, pts: [pos(e)] };
   });
   ink.addEventListener("pointermove", e => {
+    if (erasing) { ((e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e]).forEach(eraseAt); return; }
     if (!curStroke) return;
     // 一次畫完這一格畫面內收到的所有筆尖位置，線條比較跟手、也比較平滑
     const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
@@ -469,31 +543,66 @@ $("slideBox").addEventListener("drop", e => {
       curStroke.pts.push(p); ctx.lineTo(p[0] * W, p[1] * H); q = p; drew = true;
     }
     if (drew) ctx.stroke();
-    // 預測筆跡：瀏覽器推測筆尖接下來的位置，先畫在另一層上，下一次更新就擦掉重畫，不會留在筆記裡
-    const pc = $("inkPred"), pctx = pc.getContext("2d");
-    pctx.clearRect(0, 0, pc.width, pc.height);
-    const pred = e.getPredictedEvents ? e.getPredictedEvents() : [];
-    if (pred.length) {
-      pctx.lineCap = "round"; pctx.lineJoin = "round";
-      pctx.strokeStyle = curStroke.c; pctx.lineWidth = ctx.lineWidth;
-      pctx.beginPath(); pctx.moveTo(q[0] * W, q[1] * H);
-      for (const ev of pred) pctx.lineTo((ev.clientX - r.left) / r.width * W, (ev.clientY - r.top) / r.height * H);
-      pctx.stroke();
-    }
   });
   const end = () => {
+    if (erasing) { if (erasing.hit) { pushUndo(erasing.prev); saveA(); } erasing = null; return; }
     if (!curStroke) return;
     if (curStroke.pts.length > 1) {
       curStroke.pts = curStroke.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]);
-      getA().strokes.push(curStroke); saveA();
+      const a = getA(); pushUndo(a.strokes.slice());
+      a.strokes.push(curStroke); saveA();
     }
     curStroke = null;
-    const pc = $("inkPred"); pc.getContext("2d").clearRect(0, 0, pc.width, pc.height);
-    redrawAnnots();
+    paintInk();
   };
   ink.addEventListener("pointerup", end);
   ink.addEventListener("pointercancel", end);
 })();
+
+// ---------- 投影片獨立視窗（拖到 iPad 延伸螢幕上手寫）----------
+// 做法是把整個投影片區塊搬到另一個視窗裡；程式和資料都還在原本這一頁，所以筆記、便條、匯出都不變。
+const leftEl = $("left");
+function popOut() {
+  if (slideWin && !slideWin.closed) { slideWin.focus(); return; }
+  const w = window.open("", "chSlide", "popup=yes,width=1200,height=820");
+  if (!w) return setStatus("瀏覽器擋住了彈出視窗：請點網址列右邊的圖示，允許這個網站開啟彈出式視窗", "bad");
+  const d = w.document;
+  d.open(); d.write("<!DOCTYPE html><html lang='zh-Hant'><head><meta charset='utf-8'><title>投影片 — 上課小幫手</title></head><body></body></html>"); d.close();
+  const st = d.createElement("style"); st.textContent = document.querySelector("style").textContent; d.head.append(st);
+  closePop();
+  leftEl.classList.add("popped");
+  d.body.append(leftEl);
+  slideDoc = d; slideWin = w;
+  $("split").hidden = true; $("fsBtn").hidden = false; $("dockBtn").hidden = false;
+  $("popBtn").textContent = "↩ 收回投影片";
+  d.addEventListener("keydown", navKeys);
+  d.addEventListener("pointerdown", popOutside);
+  w.addEventListener("resize", () => { if (pdf && slideDoc) showPage(page); });
+  w.addEventListener("pagehide", dockBack);
+  setTimeout(() => { if (pdf && slideDoc) showPage(page || 1); }, 150);
+  setStatus("投影片已拆成獨立視窗：把它拖到 iPad 螢幕上，再按「全螢幕」", "ok");
+}
+function dockBack() {
+  if (!slideDoc) return;
+  const w = slideWin;
+  try { closePop(); } catch (e) {}
+  leftEl.classList.remove("popped");
+  document.getElementById("main").insertBefore(leftEl, document.getElementById("split"));
+  slideDoc = null; slideWin = null;
+  $("split").hidden = false; $("fsBtn").hidden = true; $("dockBtn").hidden = true;
+  $("popBtn").textContent = "🖥 投影片獨立視窗";
+  try { if (w && !w.closed) w.close(); } catch (e) {}
+  setTimeout(() => { if (pdf) showPage(page || 1); }, 80);
+}
+$("popBtn").onclick = () => { if (slideDoc) dockBack(); else popOut(); };
+$("dockBtn").onclick = dockBack;
+$("fsBtn").onclick = () => {
+  const d = leftEl.ownerDocument;
+  if (d.fullscreenElement) d.exitFullscreen(); else d.documentElement.requestFullscreen().catch(() => {});
+};
+// 保險：獨立視窗被直接關掉（或 iPad 斷線後被關掉）時，把投影片接回來
+setInterval(() => { if (slideWin && slideWin.closed) dockBack(); }, 1000);
+window.addEventListener("pagehide", () => { try { if (slideWin && !slideWin.closed) slideWin.close(); } catch (e) {} });
 
 // ---------- 自動對頁 ----------
 function followSlides() {
