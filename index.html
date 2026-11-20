@@ -41,6 +41,17 @@
   #slideBox { position:relative; display:inline-block; line-height:0; max-width:100%; }
   #ink { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   #slideBox.mode-erase #ink { pointer-events:auto; touch-action:none; cursor:cell; }
+  #penOpts { display:inline-flex; align-items:center; gap:6px; }
+  #penOpts[hidden] { display:none; }
+  #tools #penOpts .pc { width:24px; height:24px; padding:0; border-radius:50%; border:2px solid #5b6778; }
+  #tools #penOpts .pc.hi { border-radius:5px; width:30px; }
+  #tools #penOpts .pc.on { border-color:#fff; box-shadow:0 0 0 3px var(--accent); }
+  #tools #penOpts .pw { width:28px; height:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+  #penOpts .pw i { display:block; border-radius:50%; background:var(--text); }
+  #left.popped #tools #penOpts .pw { width:40px; height:40px; }
+  #penOpts .sep { width:1px; height:20px; background:var(--line); margin:0 2px; }
+  #left.popped #tools #penOpts .pc { width:36px; height:36px; }
+  #left.popped #tools #penOpts .pc.hi { width:44px; }
   #penOnlyBox { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:4px; }
   #ptrType { font-size:12px; color:var(--dim); }
   #left.popped { flex:1 1 auto !important; min-width:0; min-height:0; border-right:none; }
@@ -96,7 +107,7 @@
   <button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 29</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 31</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -133,9 +144,20 @@
       <button id="tPin" title="按一下後，在投影片上點要釘便條的位置">📌 便條</button>
       <button id="tPen" title="用手指、觸控筆或滑鼠直接畫">✏️ 畫筆</button>
       <span id="penOpts" hidden>
-        <button class="pc on" data-c="#e53935" data-w="3">紅</button>
-        <button class="pc" data-c="#1e6fff" data-w="3">藍</button>
-        <button class="pc" data-c="rgba(255,235,59,0.45)" data-w="16">螢光</button>
+        <button class="pc" data-c="#111111" data-w="3" title="黑筆" aria-label="黑筆" style="background:#111111"></button>
+        <button class="pc on" data-c="#e53935" data-w="3" title="紅筆" aria-label="紅筆" style="background:#e53935"></button>
+        <button class="pc" data-c="#1e6fff" data-w="3" title="藍筆" aria-label="藍筆" style="background:#1e6fff"></button>
+        <button class="pc" data-c="#1b9e3e" data-w="3" title="綠筆" aria-label="綠筆" style="background:#1b9e3e"></button>
+        <button class="pc" data-c="#f57c00" data-w="3" title="橘筆" aria-label="橘筆" style="background:#f57c00"></button>
+        <button class="pc" data-c="#8e24aa" data-w="3" title="紫筆" aria-label="紫筆" style="background:#8e24aa"></button>
+        <span class="sep"></span>
+        <button class="pc hi" data-c="rgba(255,235,59,0.45)" data-w="16" title="黃色螢光筆" aria-label="黃色螢光筆" style="background:#ffeb3b"></button>
+        <button class="pc hi" data-c="rgba(105,240,174,0.45)" data-w="16" title="綠色螢光筆" aria-label="綠色螢光筆" style="background:#69f0ae"></button>
+        <button class="pc hi" data-c="rgba(255,128,171,0.45)" data-w="16" title="粉紅螢光筆" aria-label="粉紅螢光筆" style="background:#ff80ab"></button>
+        <span class="sep"></span>
+        <button class="pw" data-s="0.5" title="細" aria-label="細"><i style="width:4px;height:4px"></i></button>
+        <button class="pw on" data-s="1" title="中" aria-label="中"><i style="width:8px;height:8px"></i></button>
+        <button class="pw" data-s="2" title="粗" aria-label="粗"><i style="width:14px;height:14px"></i></button>
       </span>
       <button id="tErase" title="在筆跡上劃過，擦掉整筆">🧽 橡皮擦</button>
       <button id="tUndo">↩ 復原</button>
@@ -347,7 +369,7 @@ $("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("not
 // 請瀏覽器用低延遲的方式更新筆跡畫面（必須在第一次取得畫布時設定）
 try { $("ink").getContext("2d", { desynchronized: true }); $("inkPred").getContext("2d", { desynchronized: true }); } catch (e) {}
 let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null, erasing = null;
-let penOnly = false, penChosen = false;
+let penOnly = false, penChosen = false, penBase = 3, penScale = 1;
 const undoStack = [];
 function pushUndo(prev) { undoStack.push({ k: pk(page), prev: prev }); if (undoStack.length > 200) undoStack.shift(); }
 function notePtr(e) {
@@ -376,7 +398,15 @@ const penBtns = [...document.querySelectorAll("#penOpts .pc")];
 penBtns.forEach(b => {
   b.onclick = () => {
     penBtns.forEach(x => x.classList.remove("on"));
-    b.classList.add("on"); penColor = b.dataset.c; penW = +b.dataset.w;
+    b.classList.add("on"); penColor = b.dataset.c; penBase = +b.dataset.w; penW = penBase * penScale;
+  };
+});
+// 粗細：細、中、粗，畫筆和螢光筆都適用
+const widthBtns = [...document.querySelectorAll("#penOpts .pw")];
+widthBtns.forEach(b => {
+  b.onclick = () => {
+    widthBtns.forEach(x => x.classList.remove("on"));
+    b.classList.add("on"); penScale = +b.dataset.s; penW = penBase * penScale;
   };
 });
 $("tUndo").onclick = () => {
