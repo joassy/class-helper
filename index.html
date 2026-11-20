@@ -84,7 +84,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 25</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 26</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -318,6 +318,8 @@ document.addEventListener("keydown", e => {
 $("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("note").value; save(); } });
 
 // ---------- 在投影片上做筆記：便條、畫筆 ----------
+// 請瀏覽器用低延遲的方式更新筆跡畫面（必須在第一次取得畫布時設定）
+try { $("ink").getContext("2d", { desynchronized: true }); } catch (e) {}
 let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null;
 const getA = () => { const k = pk(page); return annots[k] || (annots[k] = { pins: [], strokes: [] }); };
 function setTool(t, hint) {
@@ -452,12 +454,19 @@ $("slideBox").addEventListener("drop", e => {
   });
   ink.addEventListener("pointermove", e => {
     if (!curStroke) return;
-    const p = pos(e), q = curStroke.pts[curStroke.pts.length - 1];
-    if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 0.003) return;
-    curStroke.pts.push(p);
+    // 一次畫完這一格畫面內收到的所有筆尖位置，線條比較跟手、也比較平滑
+    const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+    const r = ink.getBoundingClientRect(), W = ink.width, H = ink.height;
     const ctx = ink.getContext("2d"); ctx.lineCap = "round"; ctx.lineJoin = "round";
-    ctx.strokeStyle = curStroke.c; ctx.lineWidth = Math.max(1, curStroke.w * ink.width / 1000);
-    ctx.beginPath(); ctx.moveTo(q[0] * ink.width, q[1] * ink.height); ctx.lineTo(p[0] * ink.width, p[1] * ink.height); ctx.stroke();
+    ctx.strokeStyle = curStroke.c; ctx.lineWidth = Math.max(1, curStroke.w * W / 1000);
+    let q = curStroke.pts[curStroke.pts.length - 1], drew = false;
+    ctx.beginPath(); ctx.moveTo(q[0] * W, q[1] * H);
+    for (const ev of evs) {
+      const p = [(ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height];
+      if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 0.0012) continue;
+      curStroke.pts.push(p); ctx.lineTo(p[0] * W, p[1] * H); q = p; drew = true;
+    }
+    if (drew) ctx.stroke();
   });
   const end = () => {
     if (!curStroke) return;
