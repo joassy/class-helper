@@ -40,6 +40,7 @@
   #toolHint { color:var(--accent); font-size:13px; }
   #slideBox { position:relative; display:inline-block; line-height:0; max-width:100%; }
   #ink { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+  #inkPred { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
   #slideBox.mode-pen #ink { pointer-events:auto; touch-action:none; cursor:crosshair; }
   #slideBox.mode-pin { cursor:copy; }
   #pinLayer { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
@@ -84,7 +85,7 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 26</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 27</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -128,7 +129,7 @@
     </div>
     <div id="slideWrap">
       <div id="empty">請用左上角選擇 PDF 投影片。<br>沒有投影片也可以直接按「開始聽」，只用字幕翻譯。</div>
-      <div id="slideBox" hidden><canvas id="slide"></canvas><canvas id="ink"></canvas><div id="pinLayer"></div></div>
+      <div id="slideBox" hidden><canvas id="slide"></canvas><canvas id="ink"></canvas><canvas id="inkPred"></canvas><div id="pinLayer"></div></div>
     </div>
     <div id="hits"></div>
     <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
@@ -319,7 +320,7 @@ $("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("not
 
 // ---------- 在投影片上做筆記：便條、畫筆 ----------
 // 請瀏覽器用低延遲的方式更新筆跡畫面（必須在第一次取得畫布時設定）
-try { $("ink").getContext("2d", { desynchronized: true }); } catch (e) {}
+try { $("ink").getContext("2d", { desynchronized: true }); $("inkPred").getContext("2d", { desynchronized: true }); } catch (e) {}
 let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null;
 const getA = () => { const k = pk(page); return annots[k] || (annots[k] = { pins: [], strokes: [] }); };
 function setTool(t, hint) {
@@ -358,6 +359,7 @@ function drawInk(ctx, w, h, strokes) {
 function redrawAnnots() {
   const ink = $("ink"), sl = $("slide");
   ink.width = sl.width; ink.height = sl.height;
+  $("inkPred").width = sl.width; $("inkPred").height = sl.height;
   const a = page ? (annots[pk(page)] || { pins: [], strokes: [] }) : { pins: [], strokes: [] };
   const ctx = ink.getContext("2d"); ctx.clearRect(0, 0, ink.width, ink.height);
   drawInk(ctx, ink.width, ink.height, a.strokes);
@@ -467,6 +469,17 @@ $("slideBox").addEventListener("drop", e => {
       curStroke.pts.push(p); ctx.lineTo(p[0] * W, p[1] * H); q = p; drew = true;
     }
     if (drew) ctx.stroke();
+    // 預測筆跡：瀏覽器推測筆尖接下來的位置，先畫在另一層上，下一次更新就擦掉重畫，不會留在筆記裡
+    const pc = $("inkPred"), pctx = pc.getContext("2d");
+    pctx.clearRect(0, 0, pc.width, pc.height);
+    const pred = e.getPredictedEvents ? e.getPredictedEvents() : [];
+    if (pred.length) {
+      pctx.lineCap = "round"; pctx.lineJoin = "round";
+      pctx.strokeStyle = curStroke.c; pctx.lineWidth = ctx.lineWidth;
+      pctx.beginPath(); pctx.moveTo(q[0] * W, q[1] * H);
+      for (const ev of pred) pctx.lineTo((ev.clientX - r.left) / r.width * W, (ev.clientY - r.top) / r.height * H);
+      pctx.stroke();
+    }
   });
   const end = () => {
     if (!curStroke) return;
@@ -474,7 +487,9 @@ $("slideBox").addEventListener("drop", e => {
       curStroke.pts = curStroke.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]);
       getA().strokes.push(curStroke); saveA();
     }
-    curStroke = null; redrawAnnots();
+    curStroke = null;
+    const pc = $("inkPred"); pc.getContext("2d").clearRect(0, 0, pc.width, pc.height);
+    redrawAnnots();
   };
   ink.addEventListener("pointerup", end);
   ink.addEventListener("pointercancel", end);
