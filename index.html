@@ -75,6 +75,20 @@
   #pinPop .pf { display:flex; justify-content:space-between; margin-top:6px; }
   #pinPop button { padding:3px 12px; font-size:13px; }
   .pinbtn { margin-left:8px; padding:0 6px; font-size:12px; border-radius:10px; cursor:grab; }
+  #camCfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
+  #camCfg[hidden], #qrRow[hidden], #photoView[hidden] { display:none; }
+  #fbIn { width:100%; height:84px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; margin-top:4px; }
+  #qrRow { display:flex; gap:14px; align-items:center; }
+  #qr { background:#fff; padding:6px; border-radius:6px; line-height:0; }
+  #photos { display:flex; gap:6px; align-items:center; padding:2px 12px; overflow-x:auto; flex:0 0 auto; }
+  #photos .lbl { font-size:12px; color:var(--dim); white-space:nowrap; }
+  #photos img { height:50px; border-radius:4px; border:1px solid var(--line); cursor:pointer; flex:0 0 auto; }
+  #photos button { padding:2px 8px; font-size:12px; white-space:nowrap; }
+  #photoView { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:16px; }
+  #photoView img { max-width:100%; max-height:66%; border-radius:6px; }
+  #photoView .ctx { color:#c9d2e0; font-size:13px; max-width:720px; line-height:1.5; }
+  #photoView textarea { width:min(720px,100%); height:60px; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  #photoView .pf { display:flex; gap:10px; }
   #hits { padding:4px 12px; min-height:28px; font-size:13px; color:var(--dim); }
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
   #note { margin:6px 12px 10px; height:54px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
@@ -105,9 +119,10 @@
   <label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label>
   <button id="export">⬇ 匯出筆記</button>
   <button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button>
+  <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 31</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 32</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -127,6 +142,20 @@
     <div class="hint">名詞表：一行一個，格式是「英文 = 中文」。行首加 * 的詞，翻譯時會寫成「中文（英文）」；不想並列就把 * 刪掉。可以自己增加或修改，只存在這台電腦。</div>
     <textarea id="glossIn" spellcheck="false"></textarea>
     <button id="glossReset">還原成預設名詞表</button>
+  </div>
+</div>
+
+<div id="camCfg" hidden>
+  <div class="cfgrow">
+    <div class="hint">手機拍照同步：把 Firebase 專案設定裡的 firebaseConfig 整段貼在這裡。只存在這台電腦，不要放到 GitHub。</div>
+    <textarea id="fbIn" spellcheck="false" placeholder='const firebaseConfig = { apiKey: "...", projectId: "...", appId: "..." };'></textarea>
+  </div>
+  <button id="fbSave">儲存並連線</button>
+  <button id="fbNew" title="舊的 QR code 會失效，手機要重新掃">換一組配對碼</button>
+  <span id="fbStatus" class="hint"></span>
+  <div class="cfgrow" id="qrRow" hidden>
+    <div id="qr"></div>
+    <div class="hint">用手機相機掃這個 QR code，會打開拍照頁。<br>拍的照片會自動放進筆電「目前這一頁」的筆記。<br>這個 QR code 等於鑰匙，不要拍給別人。</div>
   </div>
 </div>
 
@@ -170,7 +199,15 @@
       <div id="slideBox" hidden><canvas id="slide"></canvas><canvas id="ink"></canvas><canvas id="inkPred"></canvas><div id="pinLayer"></div></div>
     </div>
     <div id="hits"></div>
+    <div id="photos"></div>
+    <input type="file" id="photoFile" accept="image/*" multiple hidden>
     <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
+    <div id="photoView" hidden>
+      <img id="pvImg" alt="實作照片">
+      <div id="pvCtx" class="ctx"></div>
+      <textarea id="pvNote" placeholder="這張照片的說明，例如：第三步，先按這個鍵"></textarea>
+      <div class="pf"><button id="pvDel">刪除這張</button><button id="pvClose">關閉</button></div>
+    </div>
     <div id="pinPop" hidden>
       <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
       <textarea id="popText" placeholder="便條內容"></textarea>
@@ -253,6 +290,7 @@ $("keyIn").value = aiKey; $("modelIn").value = aiModel;
 $("glossIn").value = gloss; $("sendSlide").checked = sendSlide;
 $("glossReset").onclick = () => { $("glossIn").value = DEFAULT_GLOSS; };
 $("cfgBtn").onclick = () => { $("cfg").hidden = !$("cfg").hidden; };
+$("camBtn").onclick = () => { $("camCfg").hidden = !$("camCfg").hidden; if (!$("camCfg").hidden && fbCfg) showQR(); };
 $("cfgSave").onclick = () => {
   aiKey = $("keyIn").value.trim();
   aiModel = $("modelIn").value.trim() || DEFAULT_MODEL;
@@ -345,6 +383,7 @@ async function showPage(n) {
     $("pageInfo").textContent = "第 " + n + " / " + pdf.numPages + " 頁";
     $("note").value = notes[pk(n)] || "";
     redrawAnnots();
+    drawPhotos();
   } catch (err) {
     setStatus("頁面顯示失敗：" + err.message, "bad");
   }
@@ -369,7 +408,7 @@ $("note").addEventListener("input", () => { if (page) { notes[pk(page)] = $("not
 // 請瀏覽器用低延遲的方式更新筆跡畫面（必須在第一次取得畫布時設定）
 try { $("ink").getContext("2d", { desynchronized: true }); $("inkPred").getContext("2d", { desynchronized: true }); } catch (e) {}
 let tool = "", pendingPin = null, penColor = "#e53935", penW = 3, curStroke = null, erasing = null;
-let penOnly = false, penChosen = false, penBase = 3, penScale = 1;
+let penOnly = false, penChosen = false, penBase = 3, penScale = 1, inkPtr = null;
 const undoStack = [];
 function pushUndo(prev) { undoStack.push({ k: pk(page), prev: prev }); if (undoStack.length > 200) undoStack.shift(); }
 function notePtr(e) {
@@ -553,11 +592,17 @@ $("slideBox").addEventListener("drop", e => {
   ink.addEventListener("pointerdown", e => {
     if (!page || (tool !== "pen" && tool !== "erase")) return;
     if (penOnly && e.pointerType === "touch") return;
+    // 防手掌：接觸面積很大的觸碰多半是手掌，不畫
+    if (e.pointerType === "touch" && Math.max(e.width || 0, e.height || 0) > 40) return;
+    // 已經有一筆在畫時，後來碰到螢幕的不算；但如果前一個幾乎沒動（多半是先放下的手掌），就讓新的接手
+    if (erasing || (curStroke && curStroke.pts.length > 3)) return;
+    inkPtr = e.pointerId;
     e.preventDefault(); ink.setPointerCapture(e.pointerId);
     if (tool === "erase") { erasing = { prev: getA().strokes.slice(), hit: false }; eraseAt(e); return; }
     curStroke = { c: penColor, w: penW, pts: [pos(e)] };
   });
   ink.addEventListener("pointermove", e => {
+    if (e.pointerId !== inkPtr) return;
     if (erasing) { ((e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e]).forEach(eraseAt); return; }
     if (!curStroke) return;
     // 一次畫完這一格畫面內收到的所有筆尖位置，線條比較跟手、也比較平滑
@@ -574,7 +619,9 @@ $("slideBox").addEventListener("drop", e => {
     }
     if (drew) ctx.stroke();
   });
-  const end = () => {
+  const end = e => {
+    if (e.pointerId !== inkPtr) return;
+    inkPtr = null;
     if (erasing) { if (erasing.hit) { pushUndo(erasing.prev); saveA(); } erasing = null; return; }
     if (!curStroke) return;
     if (curStroke.pts.length > 1) {
@@ -633,6 +680,161 @@ $("fsBtn").onclick = () => {
 // 保險：獨立視窗被直接關掉（或 iPad 斷線後被關掉）時，把投影片接回來
 setInterval(() => { if (slideWin && slideWin.closed) dockBack(); }, 1000);
 window.addEventListener("pagehide", () => { try { if (slideWin && !slideWin.closed) slideWin.close(); } catch (e) {} });
+
+// ---------- 實作照片：存在這台電腦瀏覽器的資料庫（IndexedDB），不佔用筆記的空間 ----------
+let photos = [], idb = null, pvCur = null;
+const IMG_OK = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/;
+const idbReady = new Promise(res => {
+  try {
+    const rq = indexedDB.open("class-helper", 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore("photos", { keyPath: "id" });
+    rq.onsuccess = () => {
+      idb = rq.result;
+      const g = idb.transaction("photos").objectStore("photos").getAll();
+      g.onsuccess = () => { photos = (g.result || []).sort((a, b) => a.ts - b.ts); drawPhotos(); res(); };
+      g.onerror = () => res();
+    };
+    rq.onerror = () => res();
+  } catch (e) { res(); }
+});
+const idbTx = fn => new Promise((res, rej) => {
+  if (!idb) return res();
+  const tx = idb.transaction("photos", "readwrite"); fn(tx.objectStore("photos"));
+  tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+});
+const idbPut = ph => idbTx(st => st.put(ph));
+const idbDel = id => idbTx(st => st.delete(id));
+const idbClear = () => idbTx(st => st.clear()).catch(() => {});
+async function addPhoto(img, note, id) {
+  if (!IMG_OK.test(img)) return false;
+  id = id || ("m" + Date.now() + Math.random().toString(36).slice(2, 7));
+  if (photos.some(x => x.id === id)) return false;
+  const d = new Date();
+  // 記下拍照當下是哪一頁、老師剛講的兩句話，回去看才知道這張在拍什麼
+  const ph = { id: id, k: pk(page || 0), ts: d.getTime(), t: d.toTimeString().slice(0, 8), img: img, note: note || "",
+               ctx: log.slice(-2).map(l => ({ zh: l.zh || "", en: l.en })) };
+  photos.push(ph);
+  try { await idbPut(ph); } catch (e) { setStatus("照片存不進這台電腦：" + (e && e.message), "bad"); }
+  drawPhotos();
+  return true;
+}
+function drawPhotos() {
+  const box = $("photos"); if (!box) return;
+  box.textContent = "";
+  const list = photos.filter(x => x.k === pk(page || 0));
+  const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = "📷 本頁照片 " + list.length;
+  box.append(lbl);
+  list.forEach(ph => {
+    const im = document.createElement("img"); im.src = ph.img; im.title = ph.t + (ph.note ? "　" + ph.note : "");
+    im.onclick = () => openPhoto(ph);
+    box.append(im);
+  });
+  const add = document.createElement("button"); add.textContent = "＋ 加入照片"; add.title = "從這台電腦選照片，放進這一頁";
+  add.onclick = () => $("photoFile").click();
+  box.append(add);
+}
+function openPhoto(ph) {
+  pvCur = ph;
+  $("pvImg").src = ph.img; $("pvNote").value = ph.note || "";
+  $("pvCtx").textContent = ph.t + " 拍攝" + (ph.ctx || []).filter(c => c.zh || c.en).map(c => "\n老師當時說：" + (c.zh || c.en)).join("");
+  $("pvCtx").style.whiteSpace = "pre-wrap";
+  $("photoView").hidden = false;
+}
+$("pvClose").onclick = () => { $("photoView").hidden = true; pvCur = null; drawPhotos(); };
+$("pvNote").addEventListener("input", () => { if (pvCur) { pvCur.note = $("pvNote").value; idbPut(pvCur).catch(() => {}); } });
+$("pvDel").onclick = () => {
+  if (!pvCur) return;
+  photos = photos.filter(x => x !== pvCur); idbDel(pvCur.id).catch(() => {});
+  $("photoView").hidden = true; pvCur = null; drawPhotos();
+};
+// 把照片縮到適合放進筆記的大小（長邊 1600 像素以內）
+async function shrinkImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("讀不了這張圖")); i.src = url; });
+    let sc = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)), q = 0.82, out = "";
+    for (let n = 0; n < 6; n++) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(im.naturalWidth * sc)); c.height = Math.max(1, Math.round(im.naturalHeight * sc));
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length < 900000) break;
+      sc *= 0.8; q = Math.max(0.6, q - 0.06);
+    }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+$("photoFile").addEventListener("change", async e => {
+  for (const f of [...e.target.files]) {
+    try { await addPhoto(await shrinkImage(f), ""); } catch (err) { setStatus("照片加入失敗：" + err.message, "bad"); }
+  }
+  e.target.value = "";
+});
+
+// ---------- 手機拍照同步（經過 Google Firebase；筆電一收到就把雲端那份刪掉）----------
+const FB_VER = "13.4.0";
+let fbCfg = null, fbRoom = "", fbUnsub = null;
+try { fbCfg = JSON.parse(localStorage.getItem("ch_fb") || "null"); fbRoom = localStorage.getItem("ch_room") || ""; } catch (e) {}
+function parseFbConfig(txt) {
+  const o = {};
+  String(txt).replace(/["']?(\w+)["']?\s*:\s*["']([^"']+)["']/g, (m, k, v) => { o[k] = v; return m; });
+  return (o.apiKey && o.projectId && o.appId) ? { apiKey: o.apiKey, projectId: o.projectId, appId: o.appId } : null;
+}
+function newRoom() {
+  const a = new Uint8Array(16); crypto.getRandomValues(a);
+  return [...a].map(x => x.toString(16).padStart(2, "0")).join("");
+}
+const loadScript = src => new Promise((res, rej) => {
+  if (document.querySelector('script[src="' + src + '"]')) return res();
+  const el = document.createElement("script"); el.src = src; el.onload = () => res(); el.onerror = () => rej(new Error("載入失敗")); document.head.append(el);
+});
+async function showQR() {
+  if (!fbCfg || !fbRoom) return;
+  try {
+    const payload = btoa(JSON.stringify({ c: fbCfg, r: fbRoom })).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const url = new URL("cam.html", location.href); url.search = ""; url.hash = "c=" + payload;
+    await loadScript("https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js");
+    const qr = qrcode(0, "M"); qr.addData(url.href); qr.make();
+    $("qr").innerHTML = qr.createSvgTag(4, 8);
+    $("qrRow").hidden = false;
+  } catch (e) { $("fbStatus").textContent = "QR code 產生失敗：" + e.message; }
+}
+async function fbConnect() {
+  if (!fbCfg) return;
+  if (!fbRoom) { fbRoom = newRoom(); try { localStorage.setItem("ch_room", fbRoom); } catch (e) {} }
+  $("fbStatus").textContent = "連線中…";
+  try {
+    const base = "https://www.gstatic.com/firebasejs/" + FB_VER + "/";
+    const [appMod, fs] = await Promise.all([import(base + "firebase-app.js"), import(base + "firebase-firestore.js")]);
+    if (fbUnsub) { try { fbUnsub(); } catch (e) {} fbUnsub = null; }
+    for (const a of appMod.getApps()) await appMod.deleteApp(a);
+    const db = fs.getFirestore(appMod.initializeApp(fbCfg));
+    await idbReady;
+    fbUnsub = fs.onSnapshot(fs.collection(db, "rooms", fbRoom, "photos"), snap => {
+      $("fbStatus").textContent = "已連線，等手機傳照片";
+      snap.docChanges().forEach(async ch => {
+        if (ch.type !== "added") return;
+        const d = ch.doc.data() || {};
+        const isNew = await addPhoto(String(d.img || ""), String(d.note || "").slice(0, 500), "c" + ch.doc.id);
+        if (isNew) setStatus("收到手機照片" + (page ? "，已放在第 " + page + " 頁" : ""), "ok");
+        fs.deleteDoc(ch.doc.ref).catch(() => {});
+      });
+    }, err => { $("fbStatus").textContent = "連線失敗：" + err.message; });
+  } catch (e) { $("fbStatus").textContent = "連線失敗：" + e.message; }
+}
+if (fbCfg) $("fbIn").value = "（已儲存 " + fbCfg.projectId + " 的設定；要更換再貼上新的）";
+$("fbSave").onclick = async () => {
+  const c = parseFbConfig($("fbIn").value);
+  if (!c && !fbCfg) { $("fbStatus").textContent = "看不懂這段設定：請把 firebaseConfig = { … } 整段貼上，裡面要有 apiKey、projectId、appId"; return; }
+  if (c) { fbCfg = c; try { localStorage.setItem("ch_fb", JSON.stringify(c)); } catch (e) {} }
+  await fbConnect(); showQR();
+};
+$("fbNew").onclick = async () => {
+  if (!fbCfg) return;
+  fbRoom = newRoom(); try { localStorage.setItem("ch_room", fbRoom); } catch (e) {}
+  await fbConnect(); showQR();
+};
+if (fbCfg) fbConnect();
 
 // ---------- 自動對頁 ----------
 function followSlides() {
@@ -997,6 +1199,7 @@ $("export").onclick = async () => {
   Object.keys(annots).forEach(k => { const a = annots[k]; if (a && ((a.pins && a.pins.length) || (a.strokes && a.strokes.length))) addSec(k); });
   const lk = l => (l.doc ? l.doc + "#" : "") + (l.page || 0);
   log.forEach(l => { if (l.star) addSec(lk(l)); });
+  photos.forEach(ph => addSec(ph.k));
   const list = [...secs.values()].sort((x, y) => x.doc.localeCompare(y.doc) || x.page - y.page);
   setStatus("整理筆記中…");
   let missing = false;
@@ -1011,6 +1214,7 @@ $("export").onclick = async () => {
     "h1{font-size:24px;margin-bottom:4px}h2{font-size:18px;margin:28px 0 8px;padding-bottom:4px;border-bottom:2px solid #d5dbe5}" +
     ".sum{color:#667}.pg{border:1px solid #d5dbe5;border-radius:8px;padding:10px 14px;margin:14px 0;break-inside:avoid}" +
     ".pg h3{margin:0 0 6px;font-size:16px}.pg img{width:100%;border:1px solid #d5dbe5;border-radius:4px;margin:4px 0}" +
+    ".pg .photo{margin:10px 0;break-inside:avoid}.pg .photo img{width:auto;max-width:100%;max-height:560px;display:block}" +
     ".note{white-space:pre-wrap;background:#f3f6fa;border-radius:6px;padding:8px 10px;margin:6px 0}" +
     ".lbl{font-size:12px;color:#667;margin-top:8px}.star{background:#fff3c4;border-left:4px solid #e0a800;border-radius:4px;padding:6px 10px;margin:6px 0}" +
     ".pinrow{display:flex;gap:8px;margin:5px 0;align-items:flex-start}.pn{flex:0 0 22px;height:22px;border-radius:50%;background:#e53935;color:#fff;font:bold 12px/22px sans-serif;text-align:center;margin-top:2px}" +
@@ -1028,6 +1232,15 @@ $("export").onclick = async () => {
     if (a.pins && a.pins.length) {
       h += "<div class='lbl'>投影片上的便條</div>";
       a.pins.forEach((p, i) => { h += "<div class='pinrow'><div class='pn'>" + (i + 1) + "</div><div><div class='pt'>" + esc(p.text) + "</div>" + (p.en ? "<div class='en'>" + esc(p.en) + "</div>" : "") + "</div></div>"; });
+    }
+    const phs = photos.filter(ph => ph.k === sec.key);
+    if (phs.length) {
+      h += "<div class='lbl'>實作照片</div>";
+      phs.forEach(ph => {
+        h += "<div class='photo'><img src='" + ph.img + "' alt='實作照片'><div class='t'>" + esc(ph.t) + " 拍攝</div>" +
+          (ph.note ? "<div class='note'>" + esc(ph.note) + "</div>" : "") +
+          (ph.ctx || []).filter(c => c.zh || c.en).map(c => "<div class='en'>老師當時說：" + esc(c.zh || c.en) + "</div>").join("") + "</div>";
+      });
     }
     const nt = notes[sec.key];
     if (nt && String(nt).trim()) h += "<div class='lbl'>我的筆記</div><div class='note'>" + esc(String(nt).trim()) + "</div>";
@@ -1050,8 +1263,9 @@ $("export").onclick = async () => {
 };
 
 $("clear").onclick = () => {
-  if (!confirm("確定要清除所有字幕、筆記、便條和筆跡嗎？建議先按「匯出筆記」。")) return;
+  if (!confirm("確定要清除所有字幕、筆記、便條、筆跡和照片嗎？建議先按「匯出筆記」。")) return;
   log = []; notes = {}; annots = {}; save(); saveA(); redrawAll(); $("note").value = ""; $("hits").textContent = "";
+  photos = []; idbClear(); drawPhotos();
   if (pdf) redrawAnnots();
 };
 
