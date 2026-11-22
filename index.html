@@ -21,8 +21,9 @@
   #meterBox { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:4px; }
   #meter { display:inline-block; width:90px; height:8px; background:#0d1117; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
   #meterFill { display:block; height:100%; width:0; background:var(--ok); }
-  #status { margin-left:auto; font-size:14px; color:var(--dim); }
-  #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
+  /* 提示訊息塞在同一列剩下的空間，太長就用「…」截掉（滑鼠移上去看全文），不再自己佔一行 */
+  #status { flex:1 1 150px; min-width:0; text-align:right; font-size:14px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #status.ok { color:var(--ok); } #status.bad { color:var(--bad); white-space:normal; font-size:13px; line-height:1.25; max-height:2.5em; }
   #cfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
   #cfg input { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
   .cfgrow { flex-basis:100%; } #glossIn { width:100%; height:150px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; margin:4px 0; } #keyIn { width:320px; } #modelIn { width:180px; }
@@ -158,7 +159,7 @@
   <span id="bkStat"></span>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 43</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 44</span>
   <span id="engine"></span>
   <button id="redoBtn" hidden title="斷網或 AI 失敗時沒翻好的句子，按一下重新翻譯"></button>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
@@ -315,7 +316,7 @@
 <script>
 let slideDoc = null, slideWin = null;   // 投影片拆到獨立視窗時，那個視窗和它的文件
 const $ = id => document.getElementById(id) || (slideDoc ? slideDoc.getElementById(id) : null);
-const setStatus = (msg, cls) => { $("status").textContent = msg; $("status").className = cls || ""; };
+const setStatus = (msg, cls) => { $("status").textContent = msg; $("status").title = msg; $("status").className = cls || ""; };
 let curEngine = "";
 const setEngine = name => { curEngine = name; $("engine").textContent = "翻譯：" + name; };
 
