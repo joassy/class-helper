@@ -84,11 +84,25 @@
   #photos .lbl { font-size:12px; color:var(--dim); white-space:nowrap; }
   #photos img { height:50px; border-radius:4px; border:1px solid var(--line); cursor:pointer; flex:0 0 auto; }
   #photos button { padding:2px 8px; font-size:12px; white-space:nowrap; }
-  #photoView { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.88); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:16px; }
-  #photoView img { max-width:100%; max-height:66%; border-radius:6px; }
-  #photoView .ctx { color:#c9d2e0; font-size:13px; max-width:720px; line-height:1.5; }
-  #photoView textarea { width:min(720px,100%); height:60px; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
-  #photoView .pf { display:flex; gap:10px; }
+  #photoView { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.92); display:flex; flex-direction:row; align-items:stretch; gap:14px; padding:14px; }
+  #pvLeft { flex:1 1 60%; min-width:0; min-height:0; display:flex; align-items:center; justify-content:center; }
+  #pvBox { position:relative; display:inline-block; line-height:0; max-width:100%; max-height:100%; }
+  #pvImg { display:block; max-width:100%; max-height:calc(100vh - 28px); border-radius:6px; }
+  #pvInk { position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; }
+  #photoView.draw #pvInk { pointer-events:auto; touch-action:none; cursor:crosshair; }
+  #pvRight { flex:0 0 min(440px,42%); min-width:0; display:flex; flex-direction:column; gap:10px; }
+  #pvTools { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  #pvTools #pvPen.on { background:#7a5a12; border-color:var(--accent); }
+  #photoView #pvTools .pvc { width:28px; height:28px; padding:0; border-radius:50%; border:2px solid #5b6778; }
+  #photoView #pvTools .pvc.hi { border-radius:5px; width:34px; }
+  #photoView #pvTools .pvc.on { border-color:#fff; box-shadow:0 0 0 3px var(--accent); }
+  #left.popped #photoView #pvTools .pvc { width:38px; height:38px; }
+  #photoView .ctx { color:#c9d2e0; font-size:14px; line-height:1.55; overflow:auto; max-height:38%; flex:0 1 auto; }
+  #photoView textarea { flex:1 1 auto; min-height:110px; width:100%; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:15px; }
+  #photoView .pf { display:flex; gap:10px; flex-wrap:wrap; }
+  #hwToast { position:fixed; right:14px; bottom:14px; z-index:80; background:#7a5a12; color:#fff; border:1px solid var(--accent); border-radius:18px; padding:6px 14px; font-size:14px; }
+  #hwToast[hidden] { display:none; }
+  @media (max-width:760px) { #photoView { flex-direction:column; } #pvRight { flex:0 0 auto; } #pvImg { max-height:50vh; } }
   #hits { padding:4px 12px; min-height:28px; font-size:13px; color:var(--dim); }
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
   #noteRow { display:flex; gap:6px; margin:6px 12px 10px; align-items:stretch; flex:0 0 auto; }
@@ -131,7 +145,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 33</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 34</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -212,11 +226,23 @@
     <input type="file" id="photoFile" accept="image/*" multiple hidden>
     <div id="noteRow"><textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea><button class="hwBtn" data-for="note" title="用手寫輸入，AI 會轉成文字">✍️</button></div>
     <div id="photoView" hidden>
-      <img id="pvImg" alt="實作照片">
-      <div id="pvCtx" class="ctx"></div>
-      <textarea id="pvNote" placeholder="這張照片的說明，例如：第三步，先按這個鍵"></textarea>
-      <div class="pf"><button id="pvDel">刪除這張</button><button class="hwBtn" data-for="pvNote" title="用手寫輸入，AI 會轉成文字">✍️ 手寫</button><button id="pvClose">關閉</button></div>
+      <div id="pvLeft"><div id="pvBox"><img id="pvImg" alt="實作照片"><canvas id="pvInk"></canvas></div></div>
+      <div id="pvRight">
+        <div id="pvTools">
+          <button id="pvPen" title="在照片上畫記號">✏️ 畫筆</button>
+          <button class="pvc on" data-c="#e53935" data-w="5" title="紅筆" aria-label="紅筆" style="background:#e53935"></button>
+          <button class="pvc" data-c="#1e6fff" data-w="5" title="藍筆" aria-label="藍筆" style="background:#1e6fff"></button>
+          <button class="pvc" data-c="#111111" data-w="5" title="黑筆" aria-label="黑筆" style="background:#111111"></button>
+          <button class="pvc hi" data-c="rgba(255,235,59,0.45)" data-w="24" title="黃色螢光筆" aria-label="黃色螢光筆" style="background:#ffeb3b"></button>
+          <button id="pvUndo">↩ 復原</button>
+          <button id="pvClr">清除筆跡</button>
+        </div>
+        <div id="pvCtx" class="ctx"></div>
+        <textarea id="pvNote" placeholder="這張照片的說明，例如：第三步，先按這個鍵"></textarea>
+        <div class="pf"><button id="pvDel">刪除這張</button><button class="hwBtn" data-for="pvNote" title="用手寫輸入，AI 會轉成文字">✍️ 手寫</button><button id="pvClose">關閉</button></div>
+      </div>
     </div>
+    <div id="hwToast" hidden>✍️ 手寫辨識中…</div>
     <div id="pinPop" hidden>
       <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
       <textarea id="popText" placeholder="便條內容"></textarea>
@@ -654,7 +680,7 @@ $("slideBox").addEventListener("drop", e => {
 
 // ---------- 手寫板：寫完交給 AI 辨識成文字，填進便條、照片說明或整頁筆記 ----------
 const SYS_HW = "你是手寫辨識工具。圖片是使用者在課堂上手寫的筆記，可能是繁體中文、英文或兩者混合，主題是無線網路（MANET、Mesh）與消防通訊設備。把手寫內容逐字轉成文字：中文一律用繁體，英文保留原樣，換行照原樣。看不清楚的字依上下文選最可能的字。只輸出轉出來的文字，不要加引號、說明或任何其他內容。圖中沒有文字就什麼都不要輸出。";
-let hwTarget = "", hwStrokes = [], hwCur = null, hwPtr = null;
+let hwTarget = "", hwSink = null, hwJobs = 0, hwStrokes = [], hwCur = null, hwPtr = null;
 function hwPaint() {
   const c = $("hwCanvas"), x = c.getContext("2d"), W = c.width, H = c.height;
   x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
@@ -666,14 +692,83 @@ function hwPaint() {
     x.stroke();
   });
 }
-function openHw(id) {
-  hwTarget = id; hwStrokes = []; hwCur = null; hwPtr = null;
-  $("hwStatus").textContent = aiKey ? "" : "還沒設定 AI 金鑰：請先在筆電按「⚙ AI 翻譯」貼上金鑰";
+// 記住「要填到哪裡」：用資料本身而不是畫面上的欄位，這樣辨識期間換頁或關掉視窗也不會填錯地方
+function hwSinkFor(id) {
+  const join = (old, txt) => { old = String(old || "").replace(/\s+$/, ""); return old ? old + "\n" + txt : txt; };
+  if (id === "note") {
+    if (!page) return null;
+    const k = pk(page);
+    return txt => { notes[k] = join(notes[k], txt); save(); if (pk(page) === k) $("note").value = notes[k]; };
+  }
+  if (id === "popText") {
+    const a = annots[pk(page)], pin = a && a.pins[popIdx];
+    if (!pin) return null;
+    return txt => {
+      pin.text = join(pin.text, txt); saveA();
+      const a2 = annots[pk(page)], i = a2 ? a2.pins.indexOf(pin) : -1;
+      if (i >= 0) { const m = $("pinLayer").children[i]; if (m) m.title = pin.text; if (popIdx === i) $("popText").value = pin.text; }
+    };
+  }
+  if (id === "pvNote") {
+    const ph = pvCur;
+    if (!ph) return null;
+    return txt => { ph.note = join(ph.note, txt); idbPut(ph).catch(() => {}); if (pvCur === ph) $("pvNote").value = ph.note; else drawPhotos(); };
+  }
+  return null;
+}
+function hwShow() {
   $("hwGo").disabled = false;
   $("hwPad").hidden = false;
   const c = $("hwCanvas"), r = c.getBoundingClientRect(), d = (c.ownerDocument.defaultView || window).devicePixelRatio || 1;
   c.width = Math.max(300, Math.round(r.width * d)); c.height = Math.max(100, Math.round(r.height * d));
   hwPaint();
+}
+function openHw(id) {
+  hwTarget = id; hwSink = hwSinkFor(id); hwStrokes = []; hwCur = null; hwPtr = null;
+  $("hwStatus").textContent = !aiKey ? "還沒設定 AI 金鑰：請先在筆電按「⚙ AI 翻譯」貼上金鑰" : !hwSink ? "請先載入投影片" : "";
+  hwShow();
+}
+// 只取有寫字的範圍、縮小後再送出，傳得快、辨識也快
+function hwImage() {
+  const c = $("hwCanvas"), W = c.width, H = c.height;
+  let x0 = 1, y0 = 1, x1 = 0, y1 = 0;
+  hwStrokes.forEach(st => st.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }));
+  const pad = 24, bx = Math.max(0, x0 * W - pad), by = Math.max(0, y0 * H - pad);
+  const bw = Math.min(W, x1 * W + pad) - bx, bh = Math.min(H, y1 * H + pad) - by;
+  const sc = Math.min(1, 900 / bw, 560 / bh);
+  const o = document.createElement("canvas"); o.width = Math.max(40, Math.round(bw * sc)); o.height = Math.max(40, Math.round(bh * sc));
+  const x = o.getContext("2d");
+  x.fillStyle = "#fff"; x.fillRect(0, 0, o.width, o.height);
+  x.strokeStyle = "#111"; x.fillStyle = "#111"; x.lineCap = "round"; x.lineJoin = "round"; x.lineWidth = Math.max(2, W / 360 * sc);
+  hwStrokes.forEach(st => {
+    const X = p => (p[0] * W - bx) * sc, Y = p => (p[1] * H - by) * sc;
+    if (st.length < 2) { x.beginPath(); x.arc(X(st[0]), Y(st[0]), x.lineWidth * 0.8, 0, Math.PI * 2); x.fill(); return; }
+    x.beginPath(); x.moveTo(X(st[0]), Y(st[0]));
+    for (let k = 1; k < st.length; k++) x.lineTo(X(st[k]), Y(st[k]));
+    x.stroke();
+  });
+  return o.toDataURL("image/png").split(",")[1];
+}
+async function hwRun(job) {
+  hwJobs++; $("hwToast").hidden = false;
+  try {
+    const txt = await callAI(SYS_HW, [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: job.img } },
+      { type: "text", text: "請把圖中的手寫內容轉成文字。" }
+    ]);
+    if (!txt) throw new Error("看不出寫了什麼，請寫大一點、清楚一點");
+    job.sink(txt);
+  } catch (e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    if ($("hwPad").hidden) {
+      // 失敗時把手寫板連同剛才寫的字重新打開，可以直接再按一次
+      hwTarget = job.target; hwSink = job.sink; hwStrokes = job.strokes; hwCur = null; hwPtr = null;
+      hwShow();
+      $("hwStatus").textContent = "辨識失敗：" + msg + "。字還在，可以再按一次。";
+    } else {
+      $("hwStatus").textContent = "上一段辨識失敗（" + msg + "），那一段要請妳重寫";
+    }
+  } finally { hwJobs--; if (hwJobs <= 0) { hwJobs = 0; $("hwToast").hidden = true; } }
 }
 function closeHw() { $("hwPad").hidden = true; hwStrokes = []; hwCur = null; hwPtr = null; }
 document.querySelectorAll(".hwBtn").forEach(b => { b.onclick = e => { e.stopPropagation(); openHw(b.dataset.for); }; });
@@ -706,32 +801,14 @@ $("hwUndo").onclick = () => { hwStrokes.pop(); hwPaint(); };
   c.addEventListener("pointerup", end);
   c.addEventListener("pointercancel", end);
 })();
-$("hwGo").onclick = async () => {
+$("hwGo").onclick = () => {
   if (!hwStrokes.length) { $("hwStatus").textContent = "還沒寫字"; return; }
   if (!aiKey) { $("hwStatus").textContent = "還沒設定 AI 金鑰：請先在筆電按「⚙ AI 翻譯」貼上金鑰"; return; }
-  $("hwStatus").textContent = "辨識中…"; $("hwGo").disabled = true;
-  try {
-    const c = $("hwCanvas"); let src = c;
-    if (c.width > 1400) {
-      src = document.createElement("canvas"); src.width = 1400; src.height = Math.round(c.height * 1400 / c.width);
-      src.getContext("2d").drawImage(c, 0, 0, src.width, src.height);
-    }
-    const b64 = src.toDataURL("image/png").split(",")[1];
-    const txt = await callAI(SYS_HW, [
-      { type: "image", source: { type: "base64", media_type: "image/png", data: b64 } },
-      { type: "text", text: "請把圖中的手寫內容轉成文字。" }
-    ]);
-    if (!txt) { $("hwStatus").textContent = "看不出寫了什麼，請寫大一點、清楚一點再試"; return; }
-    const ta = $(hwTarget);
-    if (ta) {
-      const old = ta.value.replace(/\s+$/, "");
-      ta.value = old ? old + "\n" + txt : txt;
-      ta.dispatchEvent(new Event("input", { bubbles: true }));   // 觸發原本的自動儲存
-    }
-    closeHw();
-  } catch (e) {
-    $("hwStatus").textContent = "辨識失敗：" + (e && e.message ? e.message : e) + "。字還在，可以再按一次。";
-  } finally { $("hwGo").disabled = false; }
+  if (!hwSink) { $("hwStatus").textContent = "找不到要填入的欄位，請按取消後重新開啟"; return; }
+  // 送出後馬上關掉手寫板，不用等；辨識好了會自動填進去
+  const job = { target: hwTarget, sink: hwSink, strokes: hwStrokes.slice(), img: hwImage() };
+  closeHw();
+  hwRun(job);
 };
 
 // ---------- 投影片獨立視窗（拖到 iPad 延伸螢幕上手寫）----------
@@ -824,6 +901,7 @@ function drawPhotos() {
   box.append(lbl);
   list.forEach(ph => {
     const im = document.createElement("img"); im.src = ph.img; im.title = ph.t + (ph.note ? "　" + ph.note : "");
+    if (ph.strokes && ph.strokes.length) composePhoto(ph).then(u => { im.src = u; }).catch(() => {});
     im.onclick = () => openPhoto(ph);
     box.append(im);
   });
@@ -831,19 +909,78 @@ function drawPhotos() {
   add.onclick = () => $("photoFile").click();
   box.append(add);
 }
+let pvStroke = null, pvPtr = null, pvColor = "#e53935", pvW = 5;
+function pvPaint() {
+  const c = $("pvInk"), x = c.getContext("2d");
+  x.clearRect(0, 0, c.width, c.height);
+  if (pvCur) drawInk(x, c.width, c.height, pvCur.strokes || []);
+}
+function pvSetDraw(on) { $("photoView").classList.toggle("draw", on); $("pvPen").classList.toggle("on", on); }
 function openPhoto(ph) {
-  pvCur = ph;
-  $("pvImg").src = ph.img; $("pvNote").value = ph.note || "";
+  pvCur = ph; pvStroke = null; pvPtr = null; pvSetDraw(false);
+  const im = $("pvImg");
+  im.onload = () => { const c = $("pvInk"); c.width = im.naturalWidth; c.height = im.naturalHeight; pvPaint(); };
+  im.src = ph.img; $("pvNote").value = ph.note || "";
   $("pvCtx").textContent = ph.t + " 拍攝" + (ph.ctx || []).filter(c => c.zh || c.en).map(c => "\n老師當時說：" + (c.zh || c.en)).join("");
   $("pvCtx").style.whiteSpace = "pre-wrap";
   $("photoView").hidden = false;
 }
-$("pvClose").onclick = () => { $("photoView").hidden = true; pvCur = null; drawPhotos(); };
+// 照片加上筆跡後的樣子（縮圖和匯出用）
+async function composePhoto(ph) {
+  if (!ph.strokes || !ph.strokes.length) return ph.img;
+  const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("讀不了照片")); i.src = ph.img; });
+  const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight;
+  const x = c.getContext("2d"); x.drawImage(im, 0, 0); drawInk(x, c.width, c.height, ph.strokes);
+  return c.toDataURL("image/jpeg", 0.85);
+}
+$("pvPen").onclick = () => pvSetDraw(!$("photoView").classList.contains("draw"));
+const pvColorBtns = [...document.querySelectorAll("#pvTools .pvc")];
+pvColorBtns.forEach(b => {
+  b.onclick = () => {
+    pvColorBtns.forEach(x => x.classList.remove("on")); b.classList.add("on");
+    pvColor = b.dataset.c; pvW = +b.dataset.w; pvSetDraw(true);
+  };
+});
+$("pvUndo").onclick = () => { if (pvCur && pvCur.strokes && pvCur.strokes.length) { pvCur.strokes.pop(); idbPut(pvCur).catch(() => {}); pvPaint(); } };
+$("pvClr").onclick = () => { if (pvCur && pvCur.strokes && pvCur.strokes.length) { pvCur.strokes = []; idbPut(pvCur).catch(() => {}); pvPaint(); } };
+(function () {
+  const c = $("pvInk");
+  const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  c.addEventListener("pointerdown", e => {
+    if (!pvCur || !$("photoView").classList.contains("draw")) return;
+    if (e.pointerType === "touch" && Math.max(e.width || 0, e.height || 0) > 40) return;   // 手掌
+    if (pvStroke && pvStroke.pts.length > 3) return;
+    pvPtr = e.pointerId; e.preventDefault(); c.setPointerCapture(e.pointerId);
+    pvStroke = { c: pvColor, w: pvW, pts: [pos(e)] };
+  });
+  c.addEventListener("pointermove", e => {
+    if (!pvStroke || e.pointerId !== pvPtr) return;
+    const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+    const x = c.getContext("2d"), W = c.width, H = c.height;
+    x.lineCap = "round"; x.lineJoin = "round"; x.strokeStyle = pvStroke.c; x.lineWidth = Math.max(1, pvStroke.w * W / 1000);
+    let q = pvStroke.pts[pvStroke.pts.length - 1];
+    x.beginPath(); x.moveTo(q[0] * W, q[1] * H);
+    for (const ev of evs) { const p = pos(ev); if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 0.0015) continue; pvStroke.pts.push(p); x.lineTo(p[0] * W, p[1] * H); q = p; }
+    x.stroke();
+  });
+  const end = e => {
+    if (!pvStroke || e.pointerId !== pvPtr) return;
+    if (pvStroke.pts.length > 1 && pvCur) {
+      pvStroke.pts = pvStroke.pts.map(p => [+p[0].toFixed(4), +p[1].toFixed(4)]);
+      (pvCur.strokes || (pvCur.strokes = [])).push(pvStroke);
+      idbPut(pvCur).catch(() => {});
+    }
+    pvStroke = null; pvPtr = null; pvPaint();
+  };
+  c.addEventListener("pointerup", end);
+  c.addEventListener("pointercancel", end);
+})();
+$("pvClose").onclick = () => { $("photoView").hidden = true; pvSetDraw(false); pvCur = null; drawPhotos(); };
 $("pvNote").addEventListener("input", () => { if (pvCur) { pvCur.note = $("pvNote").value; idbPut(pvCur).catch(() => {}); } });
 $("pvDel").onclick = () => {
   if (!pvCur) return;
   photos = photos.filter(x => x !== pvCur); idbDel(pvCur.id).catch(() => {});
-  $("photoView").hidden = true; pvCur = null; drawPhotos();
+  $("photoView").hidden = true; pvSetDraw(false); pvCur = null; drawPhotos();
 };
 // 把照片縮到適合放進筆記的大小（長邊 1600 像素以內）
 async function shrinkImage(file) {
@@ -1300,6 +1437,8 @@ $("export").onclick = async () => {
   photos.forEach(ph => addSec(ph.k));
   const list = [...secs.values()].sort((x, y) => x.doc.localeCompare(y.doc) || x.page - y.page);
   setStatus("整理筆記中…");
+  const phOut = new Map();
+  for (const ph of photos) { try { phOut.set(ph.id, await composePhoto(ph)); } catch (e) {} }
   let missing = false;
   for (const sec of list) {
     if (pdf && sec.doc === curDoc && sec.page >= 1 && sec.page <= pdf.numPages) {
@@ -1335,7 +1474,7 @@ $("export").onclick = async () => {
     if (phs.length) {
       h += "<div class='lbl'>實作照片</div>";
       phs.forEach(ph => {
-        h += "<div class='photo'><img src='" + ph.img + "' alt='實作照片'><div class='t'>" + esc(ph.t) + " 拍攝</div>" +
+        h += "<div class='photo'><img src='" + (phOut.get(ph.id) || ph.img) + "' alt='實作照片'><div class='t'>" + esc(ph.t) + " 拍攝</div>" +
           (ph.note ? "<div class='note'>" + esc(ph.note) + "</div>" : "") +
           (ph.ctx || []).filter(c => c.zh || c.en).map(c => "<div class='en'>老師當時說：" + esc(c.zh || c.en) + "</div>").join("") + "</div>";
       });
