@@ -152,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 36</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 37</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -362,6 +362,15 @@ setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
 const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文，Wave Relay、MPU5、Cloud Relay、Persistent Systems 這些產品與廠商名稱也保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May、Mandy、maya、mad a、men a、man a、Manatee，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識，也不要用括號加註「應為…」這類修正說明，直接寫修正後的結果。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
+const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。語音辨識常把專有名詞聽成同音或近音的字，例如把「主節點」聽成「做姐姐」「主接點」、把「節點」聽成「接點」「結點」、把「MANET」聽成「Mac」「曼尼」「慢內」、把「位址」聽成「位置」、把「路由」聽成「路遊」、把「頻寬」聽成「平寬」。請依上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現）把聽錯的字改回來，並加上適當的標點。不要改寫句子，不要增加或刪除內容，不要翻譯，不要解釋；看不出原意的地方保留原樣。每次只校正使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出校正後的文字。";
+// 講師講中文時：用 AI 把語音辨識聽錯的同音字改回來。失敗或結果不合理就保留原始辨識。
+async function fixZh(raw, prevRaw, prevFixed) {
+  const hist = (prevRaw && prevFixed) ? [{ role: "user", content: prevRaw }, { role: "assistant", content: prevFixed }] : [];
+  const out = await callAI(SYS_ZH + "\n\n" + buildCtx(null), raw, hist);
+  const n = raw.replace(/[\s，。、！？；：]/g, "").length, m = out.replace(/[\s，。、！？；：]/g, "").length;
+  if (!out || m > n * 1.6 + 8 || m < n * 0.5) return "";   // 長度差太多，多半是它加了說明或漏了內容
+  return out;
+}
 function buildCtx(c) {
   let s = "";
   if (gloss) s += "名詞表（左邊英文、右邊是要用的中文說法；聽錯成發音相近的字時請修正。行首有 * 的是專有名詞，翻譯時請寫成「中文（英文）」，例如「受管理節點清單（managed node list）」、「訊雜比（SNR）」，有縮寫就用縮寫；同一段裡同一個詞只在第一次出現時附英文。沒有 * 的詞只寫中文）：\n" + gloss + "\n\n";
@@ -1178,8 +1187,10 @@ function drawLine(l, i) {
   d.title = "點一下標成重點";
   const meta = document.createElement("div"); meta.className = "meta";
   meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.star ? "　★ 重點" : "");
-  const en = document.createElement("div"); en.className = "en"; en.textContent = l.en;
-  if (!l.en) en.style.display = "none";   // 講師講中文的段落沒有英文原句
+  const en = document.createElement("div"); en.className = "en";
+  // 講師講中文的段落沒有英文原句；如果 AI 校正過，就把原始辨識放在這裡方便對照
+  en.textContent = l.en || ((l.src === "zh" && l.fixed && l.raw && l.raw !== l.zh) ? "原始辨識：" + l.raw : "");
+  if (!en.textContent) en.style.display = "none";
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = l.zh || "翻譯中…";
   const pb = document.createElement("button");
   pb.className = "pinbtn"; pb.textContent = "📌"; pb.draggable = true;
@@ -1209,17 +1220,27 @@ async function addLine(en, gap) {
   
   let i = log.length - 1, l = log[i];
   if (srLang === "zh") {
-    // 講師講中文：直接當字幕，不用翻譯
-    if (l && l.src === "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.zh.length + en.length < 110) {
-      l.zh += (gap > 700 ? "，" : "") + en;
+    // 講師講中文：直接當字幕，不翻譯；有 AI 金鑰時再請它把聽錯的同音字改回來
+    if (l && l.src === "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && (l.raw || l.zh).length + en.length < 110) {
+      const sep = gap > 700 ? "，" : "";
+      l.raw = (l.raw || l.zh) + sep + en;
+      l.zh += sep + en;          // 前面已經校正好的部分先留著，新的這段先顯示原始辨識
       refresh(i);
     } else {
-      l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: "", zh: en, star: false, src: "zh", eng: "中文" };
+      l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: "", zh: en, raw: en, star: false, src: "zh", eng: "中文" };
       i = log.push(l) - 1;
       box.append(drawLine(l, i));
     }
     l.v = (l.v || 0) + 1;
+    const v = l.v;
     save(); toBottom();
+    if (!aiKey) return;
+    const prev = i > 0 && log[i - 1].src === "zh" && log[i - 1].fixed ? log[i - 1] : null;
+    try {
+      const out = await fixZh(l.raw, prev && prev.raw, prev && prev.zh);
+      if (l.v !== v || !out) return;       // 這一行後來又加了新內容，等最新那次的結果
+      l.zh = out; l.fixed = true; l.eng = "中文・AI 校正"; save(); refresh(i); toBottom();
+    } catch (e) {}
     return;
   }
   if (l && l.src !== "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.en.length + en.length < MAXLEN) {
