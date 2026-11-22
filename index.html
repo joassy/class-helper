@@ -152,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 37</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 38</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -362,14 +362,26 @@ setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
 const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文，Wave Relay、MPU5、Cloud Relay、Persistent Systems 這些產品與廠商名稱也保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May、Mandy、maya、mad a、men a、man a、Manatee，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識，也不要用括號加註「應為…」這類修正說明，直接寫修正後的結果。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
-const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。語音辨識常把專有名詞聽成同音或近音的字，例如把「主節點」聽成「做姐姐」「主接點」、把「節點」聽成「接點」「結點」、把「MANET」聽成「Mac」「曼尼」「慢內」、把「位址」聽成「位置」、把「路由」聽成「路遊」、把「頻寬」聽成「平寬」。請依上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現）把聽錯的字改回來，並加上適當的標點。不要改寫句子，不要增加或刪除內容，不要翻譯，不要解釋；看不出原意的地方保留原樣。每次只校正使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出校正後的文字。";
-// 講師講中文時：用 AI 把語音辨識聽錯的同音字改回來。失敗或結果不合理就保留原始辨識。
+const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。這個語音辨識對專有名詞很不準，常把詞聽成同音或近音的字，整句看起來會不通順。常見的例子：「主節點」聽成「做姐姐」「主接點」，「節點」聽成「接點」「結點」，「MANET」聽成「Mac」「曼尼」「妹妹」，「行動隨意網路」聽成「用飛網路」「行動隨一網路」，「路由」聽成「路有」「路遊」，「路由協定」聽成「路有決定」「路有協定」，「拓撲」聽成「痛苦」「拖鋪」，「適應」聽成「是應」「市應」「門市應」，「鏈路」聽成「練路」「戀路」，「位址」聽成「位置」，「頻寬」聽成「平寬」。請依讀音、上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現），把這一段還原成講師最可能說的原話，並加上適當的標點。只還原聽錯的字詞，不要加入原文沒有提到的新內容，不要翻譯，不要解釋；真的看不出原意的地方保留原樣。每次只處理使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出還原後的文字。";
+// 需要比較強的模型時用這個（手寫辨識、中文字幕校正）；帳號用不了就退回翻譯用的模型
+async function callStrong(system, user, history) {
+  try { return await callAI(system, user, history, HW_MODEL); }
+  catch (e) {
+    if (!/model|not.?found|404|permission/i.test(String(e && e.message))) throw e;
+    return await callAI(system, user, history);
+  }
+}
+// 講師講中文時：用 AI 把語音辨識聽錯的同音字還原。回傳 { out, why }；out 是空的表示沒有採用，why 是原因
 async function fixZh(raw, prevRaw, prevFixed) {
   const hist = (prevRaw && prevFixed) ? [{ role: "user", content: prevRaw }, { role: "assistant", content: prevFixed }] : [];
-  const out = await callAI(SYS_ZH + "\n\n" + buildCtx(null), raw, hist);
-  const n = raw.replace(/[\s，。、！？；：]/g, "").length, m = out.replace(/[\s，。、！？；：]/g, "").length;
-  if (!out || m > n * 1.6 + 8 || m < n * 0.5) return "";   // 長度差太多，多半是它加了說明或漏了內容
-  return out;
+  let out;
+  try { out = await callStrong(SYS_ZH + "\n\n" + buildCtx(null), raw, hist); }
+  catch (e) { return { out: "", why: "AI 沒有回應：" + (e && e.message ? e.message : e) }; }
+  const strip = t => t.replace(/[\s，。、！？；：,.!?;:（）()「」]/g, "");
+  const n = strip(raw).length, m = strip(out).length;
+  if (!out) return { out: "", why: "AI 回了空白" };
+  if (m > n * 2 + 10 || m < n * 0.5) return { out: "", why: "AI 回的長度和原文差太多，沒有採用" };
+  return { out: out, why: "" };
 }
 function buildCtx(c) {
   let s = "";
@@ -1186,7 +1198,7 @@ function drawLine(l, i) {
   d.className = "line" + (l.star ? " star" : "");
   d.title = "點一下標成重點";
   const meta = document.createElement("div"); meta.className = "meta";
-  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.star ? "　★ 重點" : "");
+  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.why ? "（" + l.why + "）" : "") + (l.star ? "　★ 重點" : "");
   const en = document.createElement("div"); en.className = "en";
   // 講師講中文的段落沒有英文原句；如果 AI 校正過，就把原始辨識放在這裡方便對照
   en.textContent = l.en || ((l.src === "zh" && l.fixed && l.raw && l.raw !== l.zh) ? "原始辨識：" + l.raw : "");
@@ -1235,12 +1247,15 @@ async function addLine(en, gap) {
     const v = l.v;
     save(); toBottom();
     if (!aiKey) return;
+    // 等一下再送：講師連續講話時這一行會一直加長，等它停下來再校正一次就好
+    await new Promise(r => setTimeout(r, 600));
+    if (l.v !== v) return;
     const prev = i > 0 && log[i - 1].src === "zh" && log[i - 1].fixed ? log[i - 1] : null;
-    try {
-      const out = await fixZh(l.raw, prev && prev.raw, prev && prev.zh);
-      if (l.v !== v || !out) return;       // 這一行後來又加了新內容，等最新那次的結果
-      l.zh = out; l.fixed = true; l.eng = "中文・AI 校正"; save(); refresh(i); toBottom();
-    } catch (e) {}
+    const res = await fixZh(l.raw, prev && prev.raw, prev && prev.zh);
+    if (l.v !== v) return;                 // 這一行後來又加了新內容，等最新那次的結果
+    if (res.out) { l.zh = res.out; l.fixed = true; l.why = ""; l.eng = "中文・AI 校正"; }
+    else { l.zh = l.raw; l.fixed = false; l.why = res.why; l.eng = "中文・未校正"; }
+    save(); refresh(i); toBottom();
     return;
   }
   if (l && l.src !== "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.en.length + en.length < MAXLEN) {
