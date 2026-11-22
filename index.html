@@ -78,6 +78,10 @@
   .pinbtn { margin-left:8px; padding:0 6px; font-size:12px; border-radius:10px; cursor:grab; }
   #camCfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
   #camCfg[hidden], #qrRow[hidden], #photoView[hidden] { display:none; }
+  #bkCfg { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:#232b37; border-bottom:1px solid var(--line); font-size:14px; }
+  #bkCfg[hidden] { display:none; }
+  #bkStat { font-size:12px; color:var(--dim); } #bkStat.ok { color:var(--ok); } #bkStat.bad { color:var(--bad); font-weight:bold; }
+  #redoBtn { border-color:var(--accent); color:var(--accent); }
   #fbIn { width:100%; height:84px; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:12px; margin-top:4px; }
   #qrRow { display:flex; gap:14px; align-items:center; }
   #qr { background:#fff; padding:6px; border-radius:6px; line-height:0; }
@@ -150,10 +154,13 @@
   <button id="export">⬇ 匯出筆記</button>
   <button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button>
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
+  <button id="bkBtn" title="自動把字幕、筆記、筆跡、照片存一份到這台電腦的資料夾">💾 備份</button>
+  <span id="bkStat"></span>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 42</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 43</span>
   <span id="engine"></span>
+  <button id="redoBtn" hidden title="斷網或 AI 失敗時沒翻好的句子，按一下重新翻譯"></button>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
 </div>
@@ -187,6 +194,15 @@
     <div id="qr"></div>
     <div class="hint">用手機相機掃這個 QR code，會打開拍照頁。<br>拍的照片會自動放進筆電「目前這一頁」的筆記。<br>這個 QR code 等於鑰匙，不要拍給別人。</div>
   </div>
+</div>
+
+<div id="bkCfg" hidden>
+  <button id="bkPick">選擇備份資料夾</button>
+  <button id="bkNow">立即備份</button>
+  <button id="bkRestore">從備份還原</button>
+  <input type="file" id="bkFile" accept=".json,application/json" hidden>
+  <span id="bkInfo" class="hint"></span>
+  <div class="cfgrow hint">選好資料夾後，有新內容時每 10 分鐘自動存一次，按停止、匯出時也會存。每天一個檔，另外保留上一份。<br>每次重新打開網頁，要按一下「💾 備份」再按「允許」，才會繼續自動存（這是 Chrome 的規定）。備份檔裡有筆記和照片，請不要轉傳。</div>
 </div>
 
 <div id="main">
@@ -308,13 +324,16 @@ let notes = {}, log = [], annots = {}, curDoc = "";
 // 筆記、便條、筆跡都依「檔名＋頁碼」存放，換一份投影片不會互相蓋掉
 const pk = p => (curDoc ? curDoc + "#" : "") + p;
 try { annots = JSON.parse(localStorage.getItem("ch_annot") || "{}"); } catch (e) {}
+let bkDirty = false;   // 上次備份之後有沒有新內容
 function saveA() {
+  bkDirty = true;
   try { localStorage.setItem("ch_annot", JSON.stringify(annots)); }
   catch (e) { setStatus("筆跡太多，瀏覽器存不下了：請先匯出筆記，再清除紀錄", "bad"); }
 }
 try { notes = JSON.parse(localStorage.getItem("ch_notes") || "{}"); } catch (e) {}
 try { log = JSON.parse(localStorage.getItem("ch_log") || "[]"); } catch (e) {}
 function save() {
+  bkDirty = true;
   try {
     localStorage.setItem("ch_notes", JSON.stringify(notes));
     localStorage.setItem("ch_log", JSON.stringify(log));
@@ -928,8 +947,8 @@ const idbTx = fn => new Promise((res, rej) => {
   const tx = idb.transaction("photos", "readwrite"); fn(tx.objectStore("photos"));
   tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
 });
-const idbPut = ph => idbTx(st => st.put(ph));
-const idbDel = id => idbTx(st => st.delete(id));
+const idbPut = ph => { bkDirty = true; return idbTx(st => st.put(ph)); };
+const idbDel = id => { bkDirty = true; return idbTx(st => st.delete(id)); };
 const idbClear = () => idbTx(st => st.clear()).catch(() => {});
 async function addPhoto(img, note, id) {
   if (!IMG_OK.test(img)) return false;
@@ -1170,6 +1189,7 @@ async function getTranslator(from, to) {
   return translators[key];
 }
 async function translate(text, from, to, ctx) {
+  ctx = ctx || {};
   if (aiKey && from === "en") {
     try {
       // 前一段用「上一輪對話」的方式給 AI 看，它就只會接著翻新的這段，不會重翻
@@ -1184,15 +1204,19 @@ async function translate(text, from, to, ctx) {
           if (again && again.length < out.length) out = again;
         } catch (e) {}
       }
-      if (out) { setEngine("AI"); return out; }
-    } catch (e) { setStatus("AI 翻譯失敗，先改用一般翻譯：" + e.message, "bad"); }
+      if (out) { setEngine("AI"); ctx.used = "AI"; return out; }
+    } catch (e) {
+      if (ctx.aiOnly) throw e;
+      setStatus("AI 翻譯失敗，先改用一般翻譯（網路恢復後會自動補翻）：" + e.message, "bad");
+    }
+    if (ctx.aiOnly) throw new Error("AI 沒有回應");
   }
   const t = await getTranslator(from, to);
-  if (t) { try { const o = await t.translate(text); setEngine("Chrome 內建"); return o; } catch (e) {} }
+  if (t) { try { const o = await t.translate(text); setEngine("Chrome 內建"); ctx.used = "Chrome 內建"; return o; } catch (e) {} }
   const pair = (from === "en" ? "en" : "zh-TW") + "|" + (to === "en" ? "en" : "zh-TW");
   const r = await fetch("https://api.mymemory.translated.net/get?q=" + encodeURIComponent(text) + "&langpair=" + encodeURIComponent(pair));
   const j = await r.json();
-  if (j && j.responseData && j.responseData.translatedText) { setEngine("線上免費（額度小）"); return j.responseData.translatedText; }
+  if (j && j.responseData && j.responseData.translatedText) { setEngine("線上免費（額度小）"); ctx.used = "線上免費（額度小）"; return j.responseData.translatedText; }
   throw new Error("翻譯服務沒有回應");
 }
 
@@ -1203,7 +1227,7 @@ function drawLine(l, i) {
   d.className = "line" + (l.star ? " star" : "");
   d.title = "點一下標成重點";
   const meta = document.createElement("div"); meta.className = "meta";
-  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.why ? "（" + l.why + "）" : "") + (l.star ? "　★ 重點" : "");
+  meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.why ? "（" + l.why + "）" : "") + (l.redo ? "　⏳ 待補翻" : "") + (l.star ? "　★ 重點" : "");
   const en = document.createElement("div"); en.className = "en";
   // 講師講中文的段落沒有英文原句；如果 AI 校正過，就把原始辨識放在這裡方便對照
   en.textContent = l.en || ((l.src === "zh" && l.fixed && l.raw && l.raw !== l.zh) ? "原始辨識：" + l.raw : "");
@@ -1275,13 +1299,191 @@ async function addLine(en, gap) {
   const v = l.v;
   toBottom();
   followSlides();
-  let zh;
-  try { zh = await translate(l.en, "en", "zh-Hant", { slide: pageText[l.page] || "", prev: i > 0 ? log[i - 1].en : "", prevZh: i > 0 ? (log[i - 1].zh || "") : "" }); }
-  catch (e) { zh = "（翻譯失敗：" + e.message + "）"; }
+  let zh, bad = false;
+  const ctx = trCtx(i);
+  try { zh = await translate(l.en, "en", "zh-Hant", ctx); }
+  catch (e) { zh = "（翻譯失敗：" + e.message + "）"; bad = true; }
   if (l.v !== v) return;
-  l.zh = zh; l.eng = curEngine; save(); refresh(i);
+  l.zh = zh; l.eng = bad ? "" : (ctx.used || curEngine);
+  // 有 AI 金鑰卻不是 AI 翻的（斷網、AI 出錯），或完全沒翻出來：記下來，之後補翻
+  if (bad || (aiKey && ctx.used !== "AI")) l.redo = true; else delete l.redo;
+  save(); refresh(i);
   toBottom();
+  updateRedo();
+  if (ctx.used === "AI") redoPending();       // AI 通了，順便把之前沒翻好的補起來
 }
+
+// ---------- 補翻譯：斷網或 AI 失敗時沒翻好的句子，之後照順序重翻 ----------
+function trCtx(i) {
+  const p = i > 0 ? log[i - 1] : null, ok = p && p.src !== "zh" && !p.redo;
+  return { slide: pageText[log[i].page] || "", prev: ok ? p.en : "", prevZh: ok ? (p.zh || "") : "" };
+}
+const redoList = () => log.filter(l => l.redo && l.src !== "zh" && l.en);
+function updateRedo() {
+  const n = redoList().length, b = $("redoBtn");
+  b.hidden = !n;
+  b.textContent = redoBusy ? "補翻中…還剩 " + n + " 句" : "⏳ 補翻 " + n + " 句";
+}
+let redoBusy = false;
+async function redoPending(manual) {
+  if (redoBusy) return;
+  redoBusy = true; updateRedo();
+  let done = 0, err = "";
+  try {
+    for (let i = 0; i < log.length; i++) {
+      const l = log[i];
+      if (!l.redo || l.src === "zh" || !l.en) continue;
+      if (i === log.length - 1 && listening && Date.now() - (l.ts || 0) < 8000) continue;   // 最新這句可能還在加長，先不動
+      const v = l.v, ctx = trCtx(i);
+      ctx.aiOnly = !!aiKey;
+      let zh;
+      try { zh = await translate(l.en, "en", "zh-Hant", ctx); }
+      catch (e) { err = e.message || String(e); break; }      // 還是不通：先停，下次再補
+      if (l.v !== v) continue;
+      l.zh = zh; l.eng = (ctx.used || "") + "・補翻"; delete l.redo;
+      save(); refresh(i); done++; updateRedo();
+      await new Promise(r => setTimeout(r, 250));
+    }
+  } finally { redoBusy = false; updateRedo(); }
+  const left = redoList().length;
+  if (manual) setStatus(err ? "補翻沒有成功（" + err + "），還剩 " + left + " 句，請確認網路後再按一次" : (done ? "已補翻 " + done + " 句" : "沒有需要補翻的句子"), err ? "bad" : "ok");
+  else if (done && !left) setStatus("之前沒翻好的 " + done + " 句已補翻完成", "ok");
+}
+$("redoBtn").onclick = () => redoPending(true);
+window.addEventListener("online", () => setTimeout(() => { if (redoList().length) redoPending(); }, 3000));
+// 舊紀錄裡翻譯失敗、或翻到一半就關掉網頁的句子，也算待補翻
+log.forEach(l => { if (l.src !== "zh" && l.en && (!l.zh || String(l.zh).startsWith("（翻譯失敗"))) l.redo = true; });
+
+// ---------- 自動備份：把所有內容存一份到這台電腦的資料夾 ----------
+const BK_OK = !!window.showDirectoryPicker;
+let bkDir = null, bkLast = 0, bkBusy = false, bkGranted = false, bkErr = "";
+const bkDb = () => new Promise((res, rej) => {
+  const rq = indexedDB.open("class-helper-bk", 1);
+  rq.onupgradeneeded = () => rq.result.createObjectStore("kv");
+  rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+});
+async function bkKv(mode, val) {
+  const db = await bkDb();
+  return new Promise((res, rej) => {
+    const tx = db.transaction("kv", mode === "get" ? "readonly" : "readwrite"), st = tx.objectStore("kv");
+    const rq = mode === "get" ? st.get("dir") : st.put(val, "dir");
+    tx.oncomplete = () => { db.close(); res(rq.result); }; tx.onerror = () => { db.close(); rej(tx.error); };
+  });
+}
+const hm = t => { const d = new Date(t), p = n => String(n).padStart(2, "0"); return p(d.getHours()) + ":" + p(d.getMinutes()); };
+const ymd = d => { const p = n => String(n).padStart(2, "0"); return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); };
+function bkShow() {
+  const st = $("bkStat"), info = $("bkInfo");
+  if (!BK_OK) { st.textContent = ""; $("bkBtn").hidden = true; return; }
+  let msg, cls = "";
+  if (!bkDir) msg = "尚未設定備份";
+  else if (!bkGranted) { msg = "備份暫停：請按「💾 備份」允許"; cls = "bad"; }
+  else if (bkErr) { msg = "備份失敗：" + bkErr; cls = "bad"; }
+  else if (!bkLast) msg = bkDirty ? "備份已開啟，等待第一次存檔" : "備份已開啟";
+  else if (bkDirty && Date.now() - bkLast > 15 * 60000) { msg = "超過 15 分鐘沒備份（上次 " + hm(bkLast) + "）"; cls = "bad"; }
+  else { msg = "已備份 " + hm(bkLast); cls = "ok"; }
+  st.textContent = msg; st.className = cls;
+  info.textContent = bkDir ? "備份資料夾：" + bkDir.name + (bkGranted ? "" : "（還沒允許）") : "還沒選資料夾";
+}
+function bkBlob() {
+  // 照片一張一張接起來，不組成一個超大的字串，存檔時畫面才不會卡
+  const head = JSON.stringify({ app: "class-helper", fmt: 1, ver: $("ver").textContent, t: Date.now(), notes: notes, log: log, annots: annots });
+  const parts = [head.slice(0, -1), ',"photos":['];
+  photos.forEach((ph, i) => { if (i) parts.push(","); parts.push(JSON.stringify(ph)); });
+  parts.push("]}");
+  return new Blob(parts, { type: "application/json" });
+}
+async function bkWrite(name, blob) {
+  const fh = await bkDir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable();
+  await w.write(blob); await w.close();
+}
+// why：auto 自動、manual 手動、clear 清除前、restore 還原前
+async function doBackup(why) {
+  if (!BK_OK || !bkDir || !bkGranted || bkBusy) return false;
+  if (!log.length && !photos.length && !Object.keys(notes).length && !Object.keys(annots).length) return false;   // 空的不存，免得蓋掉有內容的備份
+  bkBusy = true;
+  try {
+    await idbReady;
+    const d = new Date(), blob = bkBlob();
+    if (why === "clear" || why === "restore") {
+      await bkWrite("上課備份-" + (why === "clear" ? "清除前-" : "還原前-") + ymd(d) + "-" + hm(d).replace(":", "") + ".json", blob);
+    } else {
+      const name = "上課備份-" + ymd(d) + ".json";
+      // 先把目前那一份另存成「上一份」，再寫新的
+      try { const old = await (await bkDir.getFileHandle(name)).getFile(); if (old.size > 2) await bkWrite("上課備份-" + ymd(d) + "-上一份.json", old); } catch (e) {}
+      await bkWrite(name, blob);
+      bkDirty = false;
+    }
+    bkLast = Date.now(); bkErr = "";
+    return true;
+  } catch (e) {
+    bkErr = (e && e.name === "NotAllowedError") ? "" : ((e && e.message) || String(e));
+    if (e && e.name === "NotAllowedError") bkGranted = false;
+    return false;
+  } finally { bkBusy = false; bkShow(); }
+}
+async function bkAllow(ask) {
+  if (!bkDir) return false;
+  try {
+    let p = await bkDir.queryPermission({ mode: "readwrite" });
+    if (p !== "granted" && ask) p = await bkDir.requestPermission({ mode: "readwrite" });
+    bkGranted = p === "granted";
+  } catch (e) { bkGranted = false; }
+  bkShow();
+  return bkGranted;
+}
+async function bkPick() {
+  try {
+    const h = await window.showDirectoryPicker({ mode: "readwrite", id: "classHelperBackup" });
+    bkDir = h; bkGranted = true; bkErr = "";
+    try { await bkKv("put", h); } catch (e) {}
+    bkShow();
+    if (await doBackup("manual")) setStatus("備份資料夾設定好了，已存第一份", "ok");
+    else setStatus("備份資料夾設定好了，有內容時會自動存", "ok");
+  } catch (e) { if (!e || e.name !== "AbortError") setStatus("資料夾沒有選成功：" + ((e && e.message) || e), "bad"); }
+}
+$("bkBtn").onclick = async () => {
+  $("bkCfg").hidden = !$("bkCfg").hidden;
+  if (bkDir && !bkGranted) {            // 重開網頁後第一次按：請 Chrome 再允許一次
+    if (await bkAllow(true)) { $("bkCfg").hidden = true; await doBackup("auto"); setStatus("自動備份已恢復", "ok"); }
+  }
+};
+$("bkPick").onclick = bkPick;
+$("bkNow").onclick = async () => {
+  if (!bkDir) return bkPick();
+  if (!bkGranted && !(await bkAllow(true))) return setStatus("還沒允許使用備份資料夾", "bad");
+  if (await doBackup("manual")) setStatus("已備份到「" + bkDir.name + "」資料夾", "ok");
+  else setStatus(bkErr ? "備份失敗：" + bkErr : "目前沒有內容可以備份", bkErr ? "bad" : "");
+};
+$("bkRestore").onclick = () => { $("bkFile").value = ""; $("bkFile").click(); };
+$("bkFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  let o;
+  try { o = JSON.parse(await f.text()); } catch (err) { return setStatus("這個檔案讀不了，可能不是備份檔", "bad"); }
+  const isObj = x => x && typeof x === "object" && !Array.isArray(x);
+  if (!isObj(o) || o.app !== "class-helper" || !Array.isArray(o.log) || !isObj(o.notes) || !isObj(o.annots)) return setStatus("這不是上課助理的備份檔", "bad");
+  const phs = (Array.isArray(o.photos) ? o.photos : []).filter(ph => isObj(ph) && typeof ph.id === "string" && typeof ph.img === "string" && IMG_OK.test(ph.img));
+  const when = o.t ? new Date(o.t).toLocaleString("zh-TW", { hour12: false }) : "不明";
+  if (!confirm("要還原這份備份嗎？\n\n備份時間：" + when + "\n內容：" + o.log.length + " 段字幕、" + phs.length + " 張照片\n\n目前畫面上的內容（" + log.length + " 段字幕、" + photos.length + " 張照片）會被取代。")) return;
+  await doBackup("restore");            // 有設備份資料夾的話，先把現在的內容另存一份
+  log = o.log.filter(isObj); notes = o.notes; annots = o.annots;
+  save(); saveA();
+  photos = phs.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  try { await idbClear(); for (const ph of photos) await idbPut(ph); } catch (err) { setStatus("照片存不進這台電腦：" + (err && err.message), "bad"); }
+  log.forEach(l => { if (l.src !== "zh" && l.en && (!l.zh || String(l.zh).startsWith("（翻譯失敗"))) l.redo = true; });
+  redrawAll(); drawPhotos(); updateRedo();
+  if (pdf) { redrawAnnots(); $("note").value = notes[pk(page)] || ""; }
+  bkDirty = true;
+  setStatus("已還原：" + log.length + " 段字幕、" + photos.length + " 張照片", "ok");
+});
+// 每分鐘看一次：有新內容，而且距離上次備份滿 10 分鐘，就存
+setInterval(() => { if (bkDirty && Date.now() - bkLast >= 10 * 60000) doBackup("auto"); else bkShow(); }, 60000);
+(async () => {
+  if (!BK_OK) return bkShow();
+  try { bkDir = (await bkKv("get")) || null; } catch (e) {}
+  await bkAllow(false);
+})();
 
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1453,6 +1655,7 @@ $("listen").onclick = () => {
     stopMeter();
     $("interim").textContent = "";
     setStatus("已停止");
+    setTimeout(() => { if (bkDirty) doBackup("auto"); }, 1500);   // 停下來時順便備份
   }
 };
 
@@ -1618,13 +1821,16 @@ $("export").onclick = async () => {
   el.click();
   setTimeout(() => URL.revokeObjectURL(el.href), 1000);
   setStatus("筆記已匯出", "ok");
+  if (bkDirty) doBackup("auto");
 };
 
-$("clear").onclick = () => {
+$("clear").onclick = async () => {
   if (!confirm("確定要清除所有字幕、筆記、便條、筆跡和照片嗎？建議先按「匯出筆記」。")) return;
+  if (await doBackup("clear")) setStatus("清除前已另存一份備份到「" + bkDir.name + "」資料夾", "ok");
   log = []; notes = {}; annots = {}; save(); saveA(); redrawAll(); $("note").value = ""; $("hits").textContent = "";
   photos = []; idbClear(); drawPhotos();
   if (pdf) redrawAnnots();
+  bkDirty = false; updateRedo();
 };
 
 // ---------- 中間分隔線可左右拖曳 ----------
@@ -1653,6 +1859,7 @@ $("clear").onclick = () => {
 })();
 
 redrawAll();
+updateRedo();
 if (!SR) setStatus("這個瀏覽器不支援語音辨識，請用電腦版 Chrome", "bad");
 </script>
 </body>
