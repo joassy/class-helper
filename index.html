@@ -141,29 +141,192 @@
   #askIn { flex:1; height:44px; resize:vertical; line-height:1.5; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
   #askOut { margin-top:6px; font-size:16px; color:var(--accent); }
   .hint { font-size:12px; color:var(--dim); }
+
+  /* ================= 版本 46：介面設計（只改樣式和工具列排列，不改功能） =================
+     概念：通訊機房的監聽台。石墨藍底、兩種訊號色：青綠＝正在收訊／正常，琥珀＝妳做的記號。
+     主要動作用淺色實心按鈕，其他都是安靜的幽靈按鈕；最新一句字幕最亮，舊的退後。 */
+  :root { --bg:#141923; --panel:#1b2130; --panel2:#242b3c; --line:#323a4e; --text:#eef1f6; --dim:#8f9ab0; --accent:#f5b041; --ok:#45d0b6; --bad:#ff7466; --ink:#141923; }
+  body { font-family:"Segoe UI Variable Text","Segoe UI","Microsoft JhengHei UI","Microsoft JhengHei","PingFang TC",system-ui,sans-serif; font-size:15px; letter-spacing:.01em; -webkit-font-smoothing:antialiased; }
+  ::-webkit-scrollbar { width:10px; height:10px; } ::-webkit-scrollbar-thumb { background-color:#39425a; border-radius:6px; border:3px solid transparent; background-clip:padding-box; } ::-webkit-scrollbar-thumb:hover { background-color:#55607c; } ::-webkit-scrollbar-track { background:transparent; }
+  ::selection { background:#45d0b655; }
+
+  /* 按鈕兩階：一般＝幽靈、主要＝淺色實心 */
+  button { background:transparent; border:1px solid transparent; border-radius:9px; padding:6px 11px; color:#d5dbe6; white-space:nowrap; transition:background .12s, border-color .12s, color .12s; }
+  button:hover { background:var(--panel2); border-color:var(--line); color:var(--text); }
+  button:active { background:#2d3549; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline:2px solid var(--ok); outline-offset:2px; }
+  button.on { background:#7a2b2b; border-color:#b24a4a; color:#fff; }
+  #cfgSave, #fbSave, #bkPick, #askGo, #popOk, #pvClose, #hwPad #hwGo { background:var(--text); border-color:var(--text); color:var(--ink); font-weight:600; }
+  #cfgSave:hover, #fbSave:hover, #bkPick:hover, #askGo:hover, #popOk:hover, #pvClose:hover, #hwPad #hwGo:hover { background:#fff; border-color:#fff; color:var(--ink); }
+  #popDel, #pvDel, #clear { color:#e59188; }
+  #popDel:hover, #pvDel:hover, #clear:hover { background:#4a2224; border-color:#8d3f3f; color:#fff; }
+  textarea, #cfg input { border-radius:9px; transition:border-color .12s; }
+  textarea:focus, #cfg input:focus { border-color:var(--ok); outline:none; }
+
+  /* 工具列：上排是監聽台，下排是安靜的工具 */
+  #bar { display:block; padding:0; background:var(--panel); border-bottom:1px solid #0d1118; position:relative; z-index:2; }
+  #bar .row1 { display:flex; align-items:center; gap:14px; padding:9px 14px 8px; }
+  #bar .row2 { display:flex; flex-wrap:wrap; align-items:center; gap:2px 16px; padding:3px 10px 5px; border-top:1px solid #262d3e; background:#181d2a; }
+  #bar .grp { display:inline-flex; align-items:center; gap:2px; }
+  #bar .grp.main { gap:8px; }
+  #bar .grp.end { gap:6px; }
+  #clear { font-size:13px; padding:4px 9px; }
+  #bar .row2 button { font-size:13px; padding:5px 9px; }
+  #bar label { font-size:13px; gap:7px; cursor:pointer; white-space:nowrap; color:var(--dim); }
+  #bar label:hover { color:var(--text); }
+  #bar .grp.opts { gap:14px; }
+  /* 勾選項做成開關 */
+  #bar .opts input[type=checkbox] { appearance:none; -webkit-appearance:none; flex:none; width:28px; height:16px; margin:0; border-radius:10px; background:#3a4359; position:relative; cursor:pointer; transition:background .15s; }
+  #bar .opts input[type=checkbox]::after { content:""; position:absolute; left:2px; top:2px; width:12px; height:12px; border-radius:50%; background:#c9d0dc; transition:transform .15s, background .15s; }
+  #bar .opts input[type=checkbox]:checked { background:var(--ok); }
+  #bar .opts input[type=checkbox]:checked::after { transform:translateX(12px); background:#0f1a1c; }
+  input[type=checkbox] { accent-color:var(--ok); }
+  #file { max-width:220px; font-size:12px; color:var(--dim); }
+  #file::file-selector-button { font:inherit; font-size:13px; color:#d5dbe6; background:var(--panel2); border:1px solid var(--line); border-radius:9px; padding:4px 10px; margin-right:8px; cursor:pointer; }
+  #file::file-selector-button:hover { color:var(--text); border-color:#4a5570; }
+
+  /* 開始聽：整個畫面唯一的大按鈕。待機是淺色實心，收音中變成亮著的紅燈 */
+  #listen { background:var(--text); border-color:var(--text); color:var(--ink); font-weight:700; font-size:15px; padding:8px 20px 8px 16px; border-radius:22px; }
+  #listen:hover { background:#fff; border-color:#fff; color:var(--ink); }
+  #listen.on { background:#d8402f; border-color:#ff8f80; color:#fff; box-shadow:0 0 0 4px #d8402f33, 0 0 22px #d8402f66; }
+  #listen.on:hover { background:#c23527; border-color:#ff8f80; color:#fff; }
+  #langBtn { border-color:var(--line); border-radius:22px; padding:7px 14px; background:var(--panel2); }
+  #langBtn.zh { background:#17483f; border-color:var(--ok); color:#fff; }
+  #meterBox { font-size:0; gap:0; }
+  #meter { width:120px; height:6px; border:none; border-radius:4px; background:#0d1118; box-shadow:inset 0 0 0 1px #2a3245; }
+  #meterFill { background:linear-gradient(90deg,#2aa893,#45d0b6 60%,#d5f26a); border-radius:4px; transition:width .08s linear; }
+  #status { flex:1 1 150px; text-align:left; font-size:14px; padding:0 2px; color:var(--dim); }
+  #status.ok { color:var(--ok); } #status.bad { color:var(--bad); }
+  #engine { font-size:12px; color:var(--dim); border:1px solid var(--line); border-radius:12px; padding:2px 10px; white-space:nowrap; }
+  #engine:empty { display:none; }
+  #redoBtn { border-color:#8a6a2a; color:var(--accent); font-size:13px; padding:3px 11px; border-radius:12px; margin-right:8px; }
+  #redoBtn:hover { background:#3b2f14; border-color:var(--accent); color:var(--accent); }
+  #bkStat { font-size:12px; white-space:nowrap; padding-left:4px; }
+  #ver { font-size:11px; color:#667189; white-space:nowrap; font-variant-numeric:tabular-nums; }
+
+  /* 設定面板 */
+  #cfg, #camCfg, #bkCfg { background:#202737; padding:12px 16px; gap:8px 10px; border-bottom:1px solid #0d1118; }
+  #cfg button, #camCfg button, #bkCfg button { border-color:var(--line); }
+  #cfg #cfgSave, #camCfg #fbSave, #bkCfg #bkPick { border-color:var(--text); }
+  #glossIn, #fbIn, #cfg input { background:#141923; }
+
+  /* 左邊：投影片放在桌面上 */
+  #left { background:radial-gradient(120% 80% at 50% 30%, #1d2433 0%, #141923 70%); }
+  #nav { padding:9px 14px 6px; gap:6px; }
+  #nav button { border-color:var(--line); border-radius:18px; padding:4px 12px; font-size:13px; }
+  #pageInfo { color:var(--text); font-weight:600; min-width:96px; text-align:center; font-variant-numeric:tabular-nums; }
+  #tools { margin:0 14px 9px; padding:4px 6px; background:#1f2636; border:1px solid var(--line); border-radius:12px; gap:3px; align-self:flex-start; max-width:calc(100% - 28px); box-shadow:0 4px 14px rgba(8,10,16,.35); }
+  #tools button { padding:4px 9px; border-radius:8px; }
+  #tools button.on { background:var(--accent); border-color:var(--accent); color:#1d1606; font-weight:600; }
+  #tools #penOpts .pw.on { background:var(--panel2); border-color:var(--accent); }
+  #tools #penOpts .pc.on { box-shadow:0 0 0 2px #1f2636, 0 0 0 4px var(--accent); border-color:#fff; }
+  #penOnlyBox { padding:0 6px; }
+  #toolHint { padding-right:6px; }
+  #left.popped #tools { margin:0 8px 6px; }
+  #left.popped #nav button { padding:9px 16px; font-size:16px; }
+  #slideWrap { padding:0 14px; }
+  #slide { border-radius:4px; box-shadow:0 1px 0 #ffffff14, 0 14px 34px rgba(4,6,12,.55); }
+  #empty { margin:48px auto; max-width:440px; padding:34px 22px; border:1px dashed #3a4359; border-radius:16px; font-size:15px; background:#1a202e88; }
+  #split { flex:0 0 5px; background:#0d1118; position:relative; }
+  #split::after { content:""; position:absolute; left:1px; top:50%; width:3px; height:40px; margin-top:-20px; border-radius:2px; background:#4a5570; }
+  #split:hover, #split.drag { background:var(--ok); } #split:hover::after, #split.drag::after { background:#0f1a1c; }
+  #photos { padding:4px 14px; }
+  #photos button { border-color:var(--line); }
+  #photos img { border-radius:6px; border-color:#3a4359; } #photos img:hover { border-color:var(--accent); }
+  #noteRow { margin:6px 14px 12px; }
+  #noteRow .hwBtn { border-color:var(--line); }
+  #note { background:#1b2130; border-color:var(--line); }
+  #hits { padding:4px 14px; } #hits span { background:#3b2f14; color:var(--accent); }
+
+  /* 右邊：字幕。最新一句最亮，舊的退後；英文原文用襯線斜體，和中文分開 */
+  #right { background:#10141d; }
+  #caps { padding:10px 10px 14px; }
+  .line { padding:5px 12px 7px; border-radius:10px; margin-bottom:2px; border-left:2px solid transparent; line-height:1.42; }
+  .line:hover { background:#1a2030; }
+  .line .meta { font-size:11px; color:#687390; display:flex; align-items:center; font-variant-numeric:tabular-nums; }
+  .line .en { font-family:Georgia,"Times New Roman",serif; font-style:italic; font-size:12.5px; color:#8792aa; }
+  .line .en.raw { font-family:inherit; font-style:normal; font-size:12px; color:#7a859c; }
+  .line .zh { font-size:15px; margin-top:1px; color:#c3cad8; }
+  .line:last-child { border-left-color:var(--ok); background:#161c29; }
+  .line:last-child .zh { color:#fff; }
+  .line:last-child .en { color:#a9b3c7; }
+  .line.star, .line.star:last-child { background:#2c2410; border-left-color:var(--accent); }
+  .line.star .zh { color:#fff; } .line.star .meta { color:#c79a45; }
+  .line.star:hover { background:#372d14; }
+  .pinbtn { margin-left:auto; padding:0 6px; font-size:11px; border-radius:10px; opacity:.25; filter:grayscale(1); }
+  .line:hover .pinbtn { opacity:1; filter:none; background:var(--panel2); border-color:var(--line); }
+  #interim { padding:7px 14px; background:#161c29; border-top:1px solid #262d3e; color:#9fe3d6; font-family:Georgia,serif; font-size:13px; }
+  #diag { color:#566079 !important; font-size:11px; background:#161c29; padding:0 14px 4px !important; }
+  #ask { background:#161c29; border-top:1px solid #262d3e; }
+  #askToggle { color:var(--dim); } #askSay { border-color:var(--line); }
+
+  /* 彈出的小視窗 */
+  #pinPop, .hwBox { border:1px solid #4a5570; border-radius:14px; box-shadow:0 18px 44px rgba(4,6,12,.7); background:#202737; }
+  #pinPop button, .hwBox button, #photoView button { border-color:var(--line); }
+  #pinPop #popOk, #photoView #pvClose, #hwPad #hwGo { border-color:var(--text); margin-left:auto; }
+  #pinPop .pf { gap:6px; justify-content:flex-start; }
+  #photoView { background:rgba(10,13,20,.95); }
+  #photoView #pvTools #pvPen.on, #photoView #pvTools .pvw.on { background:var(--accent); border-color:var(--accent); color:#1d1606; }
+  #photoView #pvTools .pvw.on i { background:#1d1606; }
+  #photoView textarea { background:#1b2130; }
+  #hwToast { background:#202737; border-color:var(--ok); color:var(--ok); }
+  /* ---------- 版本 47：參考商業軟體的做法 ----------
+     工具列只有一排、不換行，少用的收進「更多」選單，會刪資料的動作和其他動作分開（Fluent 2 工具列準則）；
+     用明暗層次分出主次、強調色少用（Linear 的介面改版）；每個區塊有自己的標題列。 */
+  #bar { display:flex; flex-wrap:nowrap; align-items:center; gap:6px 14px; padding:8px 12px; height:54px; }
+  #bar .grp { flex:none; }
+  #bar .grp + .grp { padding-left:14px; border-left:1px solid #2c3447; }
+  #bar .grp.end { position:relative; padding-left:0; border-left:none; gap:0; }
+  #bar > .grp button { font-size:13px; padding:6px 9px; }
+  #bar > .grp.main button { font-size:15px; }
+  #bar .grp.main #listen { padding:8px 18px 8px 14px; }
+  #bar .grp.main #langBtn { padding:7px 13px; font-size:14px; }
+  #meter { width:84px; }
+  #file { max-width:176px; }
+  #status { flex:1 1 60px; min-width:60px; }
+  /* 錯誤訊息不擠在工具列裡：改成工具列下方的提示條，全文看得到，也不會把畫面往下推 */
+  #status.bad { position:absolute; right:12px; top:calc(100% + 8px); z-index:30; flex:none; max-width:min(620px, calc(100vw - 24px)); max-height:none; white-space:normal; text-align:left; font-size:13px; line-height:1.45; color:#ffe1dc; background:#4a2224; border:1px solid #9a4a44; border-radius:10px; padding:7px 12px; box-shadow:0 10px 26px rgba(4,6,12,.55); }
+  #status.bad + .grp { margin-left:auto; }
+  #redoBtn { margin-right:6px; }
+  #moreBtn { border-color:var(--line); }
+  #moreMenu { position:absolute; right:0; top:calc(100% + 8px); z-index:40; min-width:230px; padding:8px; background:#232a3b; border:1px solid #47516a; border-radius:12px; box-shadow:0 18px 40px rgba(4,6,12,.65); display:flex; flex-direction:column; gap:2px; }
+  #moreMenu .opts { display:flex; flex-direction:column; gap:0; }
+  #moreMenu label { padding:8px 10px; border-radius:8px; justify-content:space-between; flex-direction:row-reverse; font-size:14px; color:var(--text); }
+  #moreMenu label:hover { background:#2d3549; }
+  #moreMenu .sep { height:1px; background:#353e54; margin:6px 2px; }
+  #moreMenu button { text-align:left; font-size:14px; padding:8px 10px; width:100%; }
+  #moreMenu #ver { padding:6px 10px 2px; }
+  /* 區塊標題列 */
+  #capHead { order:-1; flex:none; display:flex; align-items:baseline; gap:10px; padding:10px 22px 6px; font-size:13px; color:var(--text); border-bottom:1px solid #1d2332; }
+  #capHead b { font-weight:600; }
+  #capCount { margin-left:auto; color:var(--dim); font-size:12px; font-variant-numeric:tabular-nums; }
+  #right { counter-reset:capLines capStars; }
+  .line { counter-increment:capLines; } .line.star { counter-increment:capLines capStars; }
+  #capCount::after { content:counter(capLines) " 段　★ " counter(capStars); }
+  #nav { border-bottom:1px solid #1d2332; margin-bottom:8px; padding:9px 14px 8px; }
+  @media (max-width:1180px) { #bar { flex-wrap:wrap; height:auto; } }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
 </style>
 </head>
 <body>
 
-<div id="bar">
-  <label>投影片 PDF <input type="file" id="file" accept="application/pdf"></label>
-  <button id="listen">🎤 開始聽</button>
-  <button id="langBtn" title="講師換語言時按一下。中文會直接顯示成字幕，不翻譯。">🌐 聽：英文</button>
-  <label><input type="checkbox" id="follow"> 自動對頁</label>
-  <label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label>
-  <label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label>
-  <button id="export">⬇ 匯出筆記</button>
-  <button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button>
-  <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
-  <button id="bkBtn" title="自動把字幕、筆記、筆跡、照片存一份到這台電腦的資料夾">💾 備份</button>
-  <span id="bkStat"></span>
-  <button id="clear">清除紀錄</button>
-  <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 44</span>
-  <span id="engine"></span>
-  <button id="redoBtn" hidden title="斷網或 AI 失敗時沒翻好的句子，按一下重新翻譯"></button>
-  <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
+<div id="bar" role="toolbar" aria-label="主要工具列">
+  <span class="grp main"><button id="listen">🎤 開始聽</button><button id="langBtn" title="講師換語言時按一下。中文會直接顯示成字幕，不翻譯。">🌐 聽：英文</button><span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span></span>
+  <span class="grp"><label title="選擇這堂課的講義 PDF"><input type="file" id="file" accept="application/pdf"></label></span>
+  <span class="grp"><button id="export">⬇ 匯出筆記</button><button id="popBtn" title="把投影片拆成獨立視窗，可以拖到 iPad 延伸螢幕上手寫">🖥 投影片獨立視窗</button><button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button><button id="bkBtn" title="自動把字幕、筆記、筆跡、照片存一份到這台電腦的資料夾">💾 備份</button><span id="bkStat"></span></span>
   <span id="status">尚未開始</span>
+  <span class="grp"><button id="redoBtn" hidden title="斷網或 AI 失敗時沒翻好的句子，按一下重新翻譯"></button><span id="engine"></span></span>
+  <span class="grp end">
+    <button id="moreBtn" title="設定、AI 翻譯、清除紀錄" aria-haspopup="true">⋯ 更多</button>
+    <div id="moreMenu" hidden>
+      <span class="opts"><label><input type="checkbox" id="follow"> 自動對頁</label><label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label><label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label></span>
+      <div class="sep"></div>
+      <button id="cfgBtn">⚙ AI 翻譯</button>
+      <div class="sep"></div>
+      <button id="clear" title="清空所有字幕、筆記、便條、筆跡和照片。請先匯出筆記。">清除紀錄</button>
+      <span id="ver">版本 47</span>
+    </div>
+  </span>
 </div>
 
 <div id="cfg" hidden>
@@ -294,6 +457,7 @@
   <div id="split" title="左右拖曳調整寬度"></div>
   <div id="right">
     <div id="caps"></div>
+    <div id="capHead"><b>即時字幕</b><span class="hint">點一句標成重點</span><span id="capCount"></span></div>
     <div id="interim"></div>
     <div id="diag" class="hint" style="padding:2px 12px"></div>
     <div id="ask">
@@ -1232,6 +1396,7 @@ function drawLine(l, i) {
   const en = document.createElement("div"); en.className = "en";
   // 講師講中文的段落沒有英文原句；如果 AI 校正過，就把原始辨識放在這裡方便對照
   en.textContent = l.en || ((l.src === "zh" && l.fixed && l.raw && l.raw !== l.zh) ? "原始辨識：" + l.raw : "");
+  if (!l.en) en.classList.add("raw");          // 中文段落的「原始辨識」不用英文的斜體字
   if (!en.textContent) en.style.display = "none";
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = l.zh || "翻譯中…";
   const pb = document.createElement("button");
@@ -1858,6 +2023,12 @@ $("clear").onclick = async () => {
   split.addEventListener("pointerup", end);
   split.addEventListener("pointercancel", end);
 })();
+
+// 「更多」選單：按一下打開，點外面或選了項目就收起來
+$("moreBtn").onclick = e => { e.stopPropagation(); $("moreMenu").hidden = !$("moreMenu").hidden; };
+document.addEventListener("click", e => { const m = $("moreMenu"); if (!m.hidden && !m.contains(e.target)) m.hidden = true; });
+$("moreMenu").addEventListener("click", e => { if (e.target.closest("button")) $("moreMenu").hidden = true; });
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("moreMenu").hidden = true; });
 
 redrawAll();
 updateRedo();
