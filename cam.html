@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>拍照傳到筆電</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; padding:20px 16px 40px; background:#14181f; color:#e8ecf2; font-family:"PingFang TC","Microsoft JhengHei",system-ui,sans-serif; font-size:17px; line-height:1.5; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .dim { color:#94a0b3; font-size:14px; }
+  #shoot { display:block; width:100%; margin:18px 0 12px; padding:26px 12px; border-radius:14px; background:#2f6fed; color:#fff; font-size:24px; font-weight:bold; text-align:center; }
+  #shoot.off { background:#3a4250; color:#94a0b3; }
+  #shoot input { display:none; }
+  #pick { display:block; width:100%; padding:12px; border-radius:10px; background:#2a3340; border:1px solid #303a48; color:#e8ecf2; font-size:16px; text-align:center; }
+  #pick input { display:none; }
+  #note { width:100%; margin:12px 0; padding:12px; border-radius:10px; border:1px solid #303a48; background:#1d232d; color:#e8ecf2; font-size:17px; }
+  #status { margin:14px 0; padding:10px 12px; border-radius:10px; background:#1d232d; min-height:46px; }
+  #status.ok { color:#5fd08a; } #status.bad { color:#ff7b72; }
+  #sent { display:flex; flex-wrap:wrap; gap:8px; }
+  #sent img { height:74px; border-radius:6px; border:1px solid #303a48; }
+</style>
+</head>
+<body>
+<h1>📷 拍照傳到筆電</h1>
+<div class="dim">拍的照片會放進筆電上「目前這一頁」的筆記。</div>
+
+<label id="shoot" class="off">拍照
+  <input type="file" id="cam" accept="image/*" capture="environment" disabled>
+</label>
+<input id="note" placeholder="說明（可不填），例如：第三步" maxlength="200">
+<label id="pick">從相簿選照片
+  <input type="file" id="album" accept="image/*" multiple disabled>
+</label>
+
+<div id="status">連線中…</div>
+<div class="dim" id="count"></div>
+<div id="sent"></div>
+
+<script type="module">
+const $ = id => document.getElementById(id);
+const say = (msg, cls) => { $("status").textContent = msg; $("status").className = cls || ""; };
+const FB_VER = "13.4.0";
+let send = null, n = 0;
+
+// 把照片縮到長邊 1600 像素以內，檔案才放得進去，也傳得快
+async function shrink(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("讀不了這張照片")); i.src = url; });
+    let sc = Math.min(1, 1600 / Math.max(im.naturalWidth, im.naturalHeight)), q = 0.82, out = "";
+    for (let k = 0; k < 6; k++) {
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(im.naturalWidth * sc)); c.height = Math.max(1, Math.round(im.naturalHeight * sc));
+      c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+      out = c.toDataURL("image/jpeg", q);
+      if (out.length < 900000) break;
+      sc *= 0.8; q = Math.max(0.6, q - 0.06);
+    }
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
+
+async function handle(e) {
+  const files = [...e.target.files];
+  e.target.value = "";
+  for (const f of files) {
+    try {
+      say("傳送中…");
+      const img = await shrink(f);
+      await send(img, $("note").value.trim());
+      n++;
+      const t = document.createElement("img"); t.src = img; $("sent").prepend(t);
+      $("count").textContent = "這次已傳 " + n + " 張";
+      say("已傳到筆電 ✓", "ok");
+    } catch (err) {
+      say("沒有傳成功：" + (err && err.message ? err.message : err) + "。請確認手機有網路，再拍一次。", "bad");
+    }
+  }
+  $("note").value = "";
+}
+$("cam").addEventListener("change", handle);
+$("album").addEventListener("change", handle);
+
+(async () => {
+  let cfg = null, room = "";
+  try {
+    const m = location.hash.match(/c=([A-Za-z0-9_-]+)/);
+    const o = JSON.parse(atob(m[1].replace(/-/g, "+").replace(/_/g, "/")));
+    cfg = o.c; room = o.r;
+  } catch (e) {}
+  if (!cfg || !cfg.apiKey || !cfg.projectId || !/^[0-9a-f]{32}$/.test(room || "")) {
+    say("這個網址不完整。請在筆電的工具上按「📷 手機拍照」，用手機相機重新掃 QR code。", "bad");
+    return;
+  }
+  try {
+    const base = "https://www.gstatic.com/firebasejs/" + FB_VER + "/";
+    const [appMod, fs] = await Promise.all([import(base + "firebase-app.js"), import(base + "firebase-firestore.js")]);
+    const db = fs.getFirestore(appMod.initializeApp(cfg));
+    const col = fs.collection(db, "rooms", room, "photos");
+    send = (img, note) => fs.addDoc(col, { img: img, note: note || "", t: Date.now() });
+    $("cam").disabled = false; $("album").disabled = false; $("shoot").classList.remove("off");
+    say("準備好了，按上面的「拍照」。", "ok");
+  } catch (e) {
+    say("連不上同步服務：" + (e && e.message ? e.message : e) + "。請確認手機有網路後重新整理。", "bad");
+  }
+})();
+</script>
+</body>
+</html>
