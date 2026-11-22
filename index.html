@@ -91,7 +91,16 @@
   #photoView .pf { display:flex; gap:10px; }
   #hits { padding:4px 12px; min-height:28px; font-size:13px; color:var(--dim); }
   #hits span { display:inline-block; background:#4a3a14; color:var(--accent); border-radius:10px; padding:1px 8px; margin:2px 4px 2px 0; }
-  #note { margin:6px 12px 10px; height:54px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
+  #noteRow { display:flex; gap:6px; margin:6px 12px 10px; align-items:stretch; flex:0 0 auto; }
+  #noteRow .hwBtn { padding:0 10px; }
+  #hwPad { position:fixed; inset:0; z-index:70; background:rgba(0,0,0,.78); display:flex; align-items:center; justify-content:center; padding:12px; }
+  #hwPad[hidden] { display:none; }
+  .hwBox { background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:10px 12px; width:min(1000px,100%); }
+  #hwCanvas { display:block; width:100%; height:min(48vh,360px); background:#fff; border-radius:6px; touch-action:none; cursor:crosshair; margin:6px 0; }
+  #hwPad .pf { display:flex; gap:8px; align-items:center; justify-content:flex-start; margin-top:0; }
+  #hwPad #hwGo { margin-left:auto; background:#2f6fed; border-color:#2f6fed; color:#fff; }
+  #hwStatus { color:var(--accent); }
+  #note { flex:1; margin:0; height:54px; resize:vertical; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; }
   #caps { flex:1; overflow:auto; padding:10px 12px; min-height:0; }
   .line { padding:4px 8px; border-radius:6px; margin-bottom:2px; cursor:pointer; border-left:3px solid transparent; line-height:1.35; }
   .line:hover { background:var(--panel); }
@@ -122,7 +131,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 32</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 33</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -201,17 +210,24 @@
     <div id="hits"></div>
     <div id="photos"></div>
     <input type="file" id="photoFile" accept="image/*" multiple hidden>
-    <textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea>
+    <div id="noteRow"><textarea id="note" placeholder="這一頁的筆記（會自動儲存）"></textarea><button class="hwBtn" data-for="note" title="用手寫輸入，AI 會轉成文字">✍️</button></div>
     <div id="photoView" hidden>
       <img id="pvImg" alt="實作照片">
       <div id="pvCtx" class="ctx"></div>
       <textarea id="pvNote" placeholder="這張照片的說明，例如：第三步，先按這個鍵"></textarea>
-      <div class="pf"><button id="pvDel">刪除這張</button><button id="pvClose">關閉</button></div>
+      <div class="pf"><button id="pvDel">刪除這張</button><button class="hwBtn" data-for="pvNote" title="用手寫輸入，AI 會轉成文字">✍️ 手寫</button><button id="pvClose">關閉</button></div>
     </div>
     <div id="pinPop" hidden>
       <div class="ph"><span class="num" id="popNum"></span><span class="hint">便條（可拖曳圖釘移動位置）</span></div>
       <textarea id="popText" placeholder="便條內容"></textarea>
-      <div class="pf"><button id="popDel">刪除</button><button id="popOk">完成</button></div>
+      <div class="pf"><button id="popDel">刪除</button><button class="hwBtn" data-for="popText" title="用手寫輸入，AI 會轉成文字">✍️ 手寫</button><button id="popOk">完成</button></div>
+    </div>
+    <div id="hwPad" hidden>
+      <div class="hwBox">
+        <div class="hint">在白色區域手寫，寫完按「辨識並填入」。手寫的圖會送給 AI 辨識成文字。</div>
+        <canvas id="hwCanvas"></canvas>
+        <div class="pf"><button id="hwCancel">取消</button><button id="hwUndo">↩ 復原</button><button id="hwClear">清除</button><span id="hwStatus" class="hint"></span><button id="hwGo">辨識並填入</button></div>
+      </div>
     </div>
   </div>
 
@@ -539,7 +555,7 @@ $("popDel").onclick = () => { const a = annots[pk(page)]; if (a && a.pins[popIdx
 $("popText").addEventListener("keydown", e => { if (e.key === "Escape") closePop(); });
 function popOutside(e) {
   if ($("pinPop").hidden) return;
-  if (e.target.closest("#pinPop") || e.target.classList.contains("pin")) return;
+  if (e.target.closest("#pinPop") || e.target.closest("#hwPad") || e.target.classList.contains("pin")) return;
   closePop();
 }
 document.addEventListener("pointerdown", popOutside);
@@ -635,6 +651,88 @@ $("slideBox").addEventListener("drop", e => {
   ink.addEventListener("pointerup", end);
   ink.addEventListener("pointercancel", end);
 })();
+
+// ---------- 手寫板：寫完交給 AI 辨識成文字，填進便條、照片說明或整頁筆記 ----------
+const SYS_HW = "你是手寫辨識工具。圖片是使用者在課堂上手寫的筆記，可能是繁體中文、英文或兩者混合，主題是無線網路（MANET、Mesh）與消防通訊設備。把手寫內容逐字轉成文字：中文一律用繁體，英文保留原樣，換行照原樣。看不清楚的字依上下文選最可能的字。只輸出轉出來的文字，不要加引號、說明或任何其他內容。圖中沒有文字就什麼都不要輸出。";
+let hwTarget = "", hwStrokes = [], hwCur = null, hwPtr = null;
+function hwPaint() {
+  const c = $("hwCanvas"), x = c.getContext("2d"), W = c.width, H = c.height;
+  x.fillStyle = "#fff"; x.fillRect(0, 0, W, H);
+  x.strokeStyle = "#111"; x.fillStyle = "#111"; x.lineCap = "round"; x.lineJoin = "round"; x.lineWidth = Math.max(2, W / 360);
+  hwStrokes.forEach(st => {
+    if (st.length < 2) { x.beginPath(); x.arc(st[0][0] * W, st[0][1] * H, x.lineWidth * 0.7, 0, Math.PI * 2); x.fill(); return; }
+    x.beginPath(); x.moveTo(st[0][0] * W, st[0][1] * H);
+    for (let k = 1; k < st.length; k++) x.lineTo(st[k][0] * W, st[k][1] * H);
+    x.stroke();
+  });
+}
+function openHw(id) {
+  hwTarget = id; hwStrokes = []; hwCur = null; hwPtr = null;
+  $("hwStatus").textContent = aiKey ? "" : "還沒設定 AI 金鑰：請先在筆電按「⚙ AI 翻譯」貼上金鑰";
+  $("hwGo").disabled = false;
+  $("hwPad").hidden = false;
+  const c = $("hwCanvas"), r = c.getBoundingClientRect(), d = (c.ownerDocument.defaultView || window).devicePixelRatio || 1;
+  c.width = Math.max(300, Math.round(r.width * d)); c.height = Math.max(100, Math.round(r.height * d));
+  hwPaint();
+}
+function closeHw() { $("hwPad").hidden = true; hwStrokes = []; hwCur = null; hwPtr = null; }
+document.querySelectorAll(".hwBtn").forEach(b => { b.onclick = e => { e.stopPropagation(); openHw(b.dataset.for); }; });
+$("hwCancel").onclick = closeHw;
+$("hwClear").onclick = () => { hwStrokes = []; $("hwStatus").textContent = ""; hwPaint(); };
+$("hwUndo").onclick = () => { hwStrokes.pop(); hwPaint(); };
+(function () {
+  const c = $("hwCanvas");
+  const pos = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+  c.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch" && Math.max(e.width || 0, e.height || 0) > 40) return;   // 手掌
+    if (hwCur && hwCur.length > 3) return;
+    hwPtr = e.pointerId; e.preventDefault(); c.setPointerCapture(e.pointerId);
+    hwCur = [pos(e)];
+  });
+  c.addEventListener("pointermove", e => {
+    if (!hwCur || e.pointerId !== hwPtr) return;
+    const evs = (e.getCoalescedEvents && e.getCoalescedEvents().length) ? e.getCoalescedEvents() : [e];
+    const x = c.getContext("2d"), W = c.width, H = c.height;
+    x.strokeStyle = "#111"; x.lineCap = "round"; x.lineJoin = "round"; x.lineWidth = Math.max(2, W / 360);
+    let q = hwCur[hwCur.length - 1];
+    x.beginPath(); x.moveTo(q[0] * W, q[1] * H);
+    for (const ev of evs) { const p = pos(ev); if (Math.abs(p[0] - q[0]) + Math.abs(p[1] - q[1]) < 0.002) continue; hwCur.push(p); x.lineTo(p[0] * W, p[1] * H); q = p; }
+    x.stroke();
+  });
+  const end = e => {
+    if (!hwCur || e.pointerId !== hwPtr) return;
+    hwStrokes.push(hwCur); hwCur = null; hwPtr = null; hwPaint();
+  };
+  c.addEventListener("pointerup", end);
+  c.addEventListener("pointercancel", end);
+})();
+$("hwGo").onclick = async () => {
+  if (!hwStrokes.length) { $("hwStatus").textContent = "還沒寫字"; return; }
+  if (!aiKey) { $("hwStatus").textContent = "還沒設定 AI 金鑰：請先在筆電按「⚙ AI 翻譯」貼上金鑰"; return; }
+  $("hwStatus").textContent = "辨識中…"; $("hwGo").disabled = true;
+  try {
+    const c = $("hwCanvas"); let src = c;
+    if (c.width > 1400) {
+      src = document.createElement("canvas"); src.width = 1400; src.height = Math.round(c.height * 1400 / c.width);
+      src.getContext("2d").drawImage(c, 0, 0, src.width, src.height);
+    }
+    const b64 = src.toDataURL("image/png").split(",")[1];
+    const txt = await callAI(SYS_HW, [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: b64 } },
+      { type: "text", text: "請把圖中的手寫內容轉成文字。" }
+    ]);
+    if (!txt) { $("hwStatus").textContent = "看不出寫了什麼，請寫大一點、清楚一點再試"; return; }
+    const ta = $(hwTarget);
+    if (ta) {
+      const old = ta.value.replace(/\s+$/, "");
+      ta.value = old ? old + "\n" + txt : txt;
+      ta.dispatchEvent(new Event("input", { bubbles: true }));   // 觸發原本的自動儲存
+    }
+    closeHw();
+  } catch (e) {
+    $("hwStatus").textContent = "辨識失敗：" + (e && e.message ? e.message : e) + "。字還在，可以再按一次。";
+  } finally { $("hwGo").disabled = false; }
+};
 
 // ---------- 投影片獨立視窗（拖到 iPad 延伸螢幕上手寫）----------
 // 做法是把整個投影片區塊搬到另一個視窗裡；程式和資料都還在原本這一頁，所以筆記、便條、匯出都不變。
