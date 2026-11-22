@@ -16,6 +16,7 @@
   button.on { background:#7a2b2b; border-color:#b24a4a; }
   #bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:8px 12px; background:var(--panel); border-bottom:1px solid var(--line); }
   #bar label { color:var(--dim); font-size:14px; display:flex; align-items:center; gap:4px; }
+  #langBtn.zh { background:#1f5a3a; border-color:#5fd08a; }
   #engine { font-size:13px; color:var(--accent); }
   #meterBox { font-size:13px; color:var(--dim); display:flex; align-items:center; gap:4px; }
   #meter { display:inline-block; width:90px; height:8px; background:#0d1117; border:1px solid var(--line); border-radius:4px; overflow:hidden; }
@@ -142,6 +143,7 @@
 <div id="bar">
   <label>投影片 PDF <input type="file" id="file" accept="application/pdf"></label>
   <button id="listen">🎤 開始聽</button>
+  <button id="langBtn" title="講師換語言時按一下。中文會直接顯示成字幕，不翻譯。">🌐 聽：英文</button>
   <label><input type="checkbox" id="follow"> 自動對頁</label>
   <label><input type="checkbox" id="autoscroll" checked> 字幕自動捲到最新</label>
   <label title="用筆電本機的語音辨識，聲音不會傳到 Google。這台電腦不支援時會自動改用雲端。"><input type="checkbox" id="localSR" checked> 本機語音辨識</label>
@@ -150,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 35</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 36</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -1177,6 +1179,7 @@ function drawLine(l, i) {
   const meta = document.createElement("div"); meta.className = "meta";
   meta.textContent = l.t + (l.page ? "　第 " + l.page + " 頁" : "") + (l.eng ? "　" + l.eng : "") + (l.star ? "　★ 重點" : "");
   const en = document.createElement("div"); en.className = "en"; en.textContent = l.en;
+  if (!l.en) en.style.display = "none";   // 講師講中文的段落沒有英文原句
   const zh = document.createElement("div"); zh.className = "zh"; zh.textContent = l.zh || "翻譯中…";
   const pb = document.createElement("button");
   pb.className = "pinbtn"; pb.textContent = "📌"; pb.draggable = true;
@@ -1205,7 +1208,21 @@ async function addLine(en, gap) {
   const box = $("caps");
   
   let i = log.length - 1, l = log[i];
-  if (l && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.en.length + en.length < MAXLEN) {
+  if (srLang === "zh") {
+    // 講師講中文：直接當字幕，不用翻譯
+    if (l && l.src === "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.zh.length + en.length < 110) {
+      l.zh += (gap > 700 ? "，" : "") + en;
+      refresh(i);
+    } else {
+      l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: "", zh: en, star: false, src: "zh", eng: "中文" };
+      i = log.push(l) - 1;
+      box.append(drawLine(l, i));
+    }
+    l.v = (l.v || 0) + 1;
+    save(); toBottom();
+    return;
+  }
+  if (l && l.src !== "zh" && gap < PAUSE && l.page === (page || 0) && (l.doc || "") === curDoc && l.en.length + en.length < MAXLEN) {
     l.en += " " + en;
     refresh(i);
   } else {
@@ -1228,27 +1245,34 @@ async function addLine(en, gap) {
 // ---------- 語音辨識 ----------
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let evCount = 0, lastErr = "無", lastHeard = "尚未", loudNoEvent = 0, stalls = 0, stallStreak = 0;
-function showDiag() { $("diag").textContent = "診斷：辨識方式 " + srMode + "｜辨識事件 " + evCount + " 次｜重新連線 " + restarts + " 次（其中卡住重啟 " + stalls + " 次）｜最後錯誤 " + lastErr + "｜最後聽到字 " + lastHeard; }
+function showDiag() { $("diag").textContent = "診斷：辨識方式 " + srMode + "（" + (srLang === "zh" ? "中文" : "英文") + "）｜辨識事件 " + evCount + " 次｜重新連線 " + restarts + " 次（其中卡住重啟 " + stalls + " 次）｜最後錯誤 " + lastErr + "｜最後聽到字 " + lastHeard; }
 let rec = null, listening = false, lastEnd = 0, committedWords = 0, lastEvent = 0, restarts = 0;
 // Chrome 的語音辨識有時會自己卡住不出字：超過 15 秒沒動靜就重新啟動
 setInterval(() => {
   if (listening && rec && Date.now() - lastEvent > 15000) { lastEvent = Date.now(); try { rec.abort(); } catch (e) {} }
 }, 3000);
-const toWords = t => t.trim().split(/\s+/).filter(Boolean);
+let srLang = "en";   // 目前聽的語言："en" 英文（會翻譯）、"zh" 中文（直接顯示）
+// 英文以「單字」為單位切段；中文沒有空格，以「字」為單位，夾在裡面的英文單字保持完整
+const toWords = t => srLang === "zh" ? (t.match(/[A-Za-z0-9][A-Za-z0-9'.\-]*\s*|\S/g) || []) : t.trim().split(/\s+/).filter(Boolean);
+const joinW = a => srLang === "zh" ? a.join("").trim() : a.join(" ");
+const chunkSize = () => srLang === "zh" ? 40 : CHUNK_WORDS;
+const holdSize = () => srLang === "zh" ? 6 : HOLD_WORDS;
 function commit(text) {
-  const w = toWords(text);
-  for (let k = 0; k < w.length; k += 40) {
+  const w = toWords(text), per = srLang === "zh" ? 60 : 40;
+  for (let k = 0; k < w.length; k += per) {
     const now = Date.now();
-    addLine(w.slice(k, k + 40).join(" "), lastEnd ? now - lastEnd : Infinity);
+    addLine(joinW(w.slice(k, k + per)), lastEnd ? now - lastEnd : Infinity);
     lastEnd = now;
   }
 }
 let useLocal = false, usePhrases = false, srMode = "雲端", sessStart = 0, sessEvents = 0, quickFails = 0;
+const recLang = () => srLang === "zh" ? "zh-TW" : "en-US";
+const localBad = {};   // 哪個語言的本機辨識在這台電腦不能用
 async function prepareLocal() {
   // 新版 Chrome 可以在筆電上直接辨識，不經過 Google 伺服器；不支援就回傳 false
   try {
-    if (!$("localSR").checked || !SR.available) return false;
-    const opt = { langs: ["en-US"], processLocally: true };
+    if (!$("localSR").checked || !SR.available || localBad[srLang]) return false;
+    const opt = { langs: [recLang()], processLocally: true };
     let st = await SR.available(opt);
     if (st === "downloadable" || st === "downloading") {
       setStatus("第一次使用：下載本機語音辨識模型中，請稍等…");
@@ -1261,7 +1285,7 @@ async function prepareLocal() {
 function startRec() {
   rec = new SR();
   sessStart = Date.now(); sessEvents = 0;
-  rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true;
+  rec.lang = recLang(); rec.continuous = true; rec.interimResults = true;
   srMode = "雲端";
   if (useLocal) {
     try {
@@ -1275,7 +1299,7 @@ function startRec() {
     } catch (e) {}
   }
   committedWords = 0;
-  rec.onstart = () => { sessStart = Date.now(); sessEvents = 0; lastEvent = Date.now(); loudNoEvent = 0; setStatus("聆聽中…", "ok"); };
+  rec.onstart = () => { sessStart = Date.now(); sessEvents = 0; lastEvent = Date.now(); loudNoEvent = 0; setStatus(srLang === "zh" ? "聆聽中（中文）…" : "聆聽中…", "ok"); };
   rec.onresult = e => {
     lastEvent = Date.now(); loudNoEvent = 0; stallStreak = 0; evCount++; sessEvents++; quickFails = 0; lastHeard = new Date().toTimeString().slice(0, 8); showDiag();
     let interim = "";
@@ -1284,26 +1308,27 @@ function startRec() {
       if (e.results[i].isFinal) {
         if (i < e.resultIndex) continue;   // 之前已經處理過的句子
         const w = toWords(txt);
-        const rest = w.slice(committedWords).join(" ");
+        const rest = joinW(w.slice(committedWords));
         committedWords = Math.max(0, committedWords - w.length);
         if (rest) commit(rest);
       } else interim += txt;
     }
     // 老師一直講沒停頓時，不等辨識結束，先把前面穩定的部分切出來翻
     let pending = toWords(interim).slice(committedWords);
-    if (pending.length >= CHUNK_WORDS + HOLD_WORDS) {
-      const take = pending.length - HOLD_WORDS;
-      commit(pending.slice(0, take).join(" "));
+    if (pending.length >= chunkSize() + holdSize()) {
+      const take = pending.length - holdSize();
+      commit(joinW(pending.slice(0, take)));
       committedWords += take;
       pending = pending.slice(take);
     }
-    $("interim").textContent = pending.join(" ");
+    $("interim").textContent = joinW(pending);
   };
   rec.onerror = e => {
     lastErr = e.error + (e.message ? "（" + e.message + "）" : ""); showDiag();
     if (e.error === "no-speech" || e.error === "aborted") return;
     if (useLocal && (e.error === "language-not-supported" || e.error === "phrases-not-supported" || e.error === "service-not-allowed")) {
-      useLocal = false; $("localSR").checked = false;   // 本機辨識不能用：改回雲端，onend 會自動重啟
+      useLocal = false; localBad[srLang] = true;   // 這個語言的本機辨識不能用：改回雲端，onend 會自動重啟
+      if (srLang === "en") $("localSR").checked = false;
       return;
     }
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -1328,10 +1353,11 @@ function startRec() {
       restarts++;
       // 一啟動就馬上結束、完全沒出字：連續發生表示這種辨識方式在這台電腦不能用，逐步退回
       if (!sessEvents && Date.now() - sessStart < 2000) quickFails++; else quickFails = 0;
-      if (useLocal && quickFails >= 15) {
-        // 重試了大約 40 秒還是起不來：改回雲端辨識
-        quickFails = 0; useLocal = false; $("localSR").checked = false;
-        setStatus("這台電腦的本機語音辨識無法使用，已改回雲端辨識", "bad");
+      if (useLocal && quickFails >= (srLang === "zh" ? 4 : 15)) {
+        // 重試了一陣子還是起不來：這個語言改回雲端辨識
+        quickFails = 0; useLocal = false; localBad[srLang] = true;
+        if (srLang === "en") $("localSR").checked = false;
+        setStatus((srLang === "zh" ? "中文" : "英文") + "的本機語音辨識無法使用，已改用雲端辨識", "bad");
       } else if (useLocal && quickFails >= 2) setStatus("本機語音辨識準備中（第一次會比較久，請稍等）…");
       else if (quickFails < 3) setStatus("聆聽中…（已自動重新連線 " + restarts + " 次）", "ok");
       else setStatus("語音辨識一直無法啟動，持續重試中…", "bad");
@@ -1387,6 +1413,30 @@ $("listen").onclick = () => {
     $("interim").textContent = "";
     setStatus("已停止");
   }
+};
+
+// 切換要聽的語言：講師改講中文或英文時按一下
+let langSwitching = 0;
+$("langBtn").onclick = async () => {
+  const mine = ++langSwitching;
+  if (listening && rec) {
+    // 先把還沒送出的字用原本的語言收下來，再停掉舊的辨識
+    const left = $("interim").textContent.trim(); $("interim").textContent = "";
+    if (left) commit(left);
+    const old = rec; old.onresult = null; old.onend = null; old.onerror = null;
+    try { old.abort(); } catch (e) {}
+  }
+  srLang = srLang === "en" ? "zh" : "en";
+  $("langBtn").textContent = srLang === "zh" ? "🌐 聽：中文" : "🌐 聽：英文";
+  $("langBtn").classList.toggle("zh", srLang === "zh");
+  committedWords = 0; quickFails = 0; lastEnd = 0;
+  showDiag();
+  if (!listening) return;
+  setStatus("切換成" + (srLang === "zh" ? "中文" : "英文") + "…");
+  const ok = await prepareLocal();
+  await new Promise(r => setTimeout(r, 200));
+  if (mine !== langSwitching || !listening) return;   // 期間又按了一次，或已經停止
+  useLocal = ok; startRec(); showDiag();
 };
 
 // ---------- 提問小幫手 ----------
