@@ -367,6 +367,15 @@
   #left.popped #nav, #left.popped #tools { padding:0; margin:0; }
   #left.popped #slideHead #tools { padding:0; }
   #left.popped #nav #prev, #left.popped #nav #next { padding:10px 12px; }
+  /* ---------- 版本 50：提問小幫手精簡 ---------- */
+  #ask .row { align-items:center; gap:6px; }
+  #askIn { height:36px; min-height:36px; padding:6px 10px; font-size:14px; line-height:1.5; }
+  #ask .row button { font-size:13px; padding:5px 10px; flex:none; }
+  #askBody { margin-top:2px; padding-bottom:8px; }
+  #askOut:empty { display:none; }
+  /* ---------- 版本 51：便條視窗可以往右、往下拉大 ---------- */
+  #pinPop { width:auto; min-width:300px; max-width:calc(100vw - 16px); }
+  #pinPop textarea { display:block; width:282px; min-width:282px; max-width:calc(100vw - 36px); min-height:70px; max-height:70vh; resize:both; }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
 </style>
 </head>
@@ -386,7 +395,7 @@
       <button id="cfgBtn">AI 翻譯和名詞表</button>
       <div class="sep"></div>
       <button id="clear" title="清空所有字幕、筆記、便條、筆跡和照片。請先匯出筆記。">清除紀錄</button>
-      <span id="ver">版本 49</span>
+      <span id="ver">版本 51</span>
     </div>
   </span>
 </div>
@@ -527,9 +536,8 @@
     <div id="ask">
       <button id="askToggle" title="展開或收起提問小幫手">提問小幫手 ▸</button>
       <div id="askBody" hidden>
-      <div class="hint">用中文打想問的問題，按 Enter 變成英文問句（Shift + Enter 換行）</div>
       <div class="row">
-        <textarea id="askIn" placeholder="例如：這個設定預設值是多少"></textarea>
+        <textarea id="askIn" placeholder="用中文打問題，按 Enter 變成英文問句" title="按 Enter 翻成英文，Shift + Enter 換行"></textarea>
         <button id="askGo">翻成英文</button>
         <button id="askSay">唸給我聽</button>
       </div>
