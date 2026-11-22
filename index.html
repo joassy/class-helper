@@ -152,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 39</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 41</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -362,7 +362,7 @@ setEngine(aiKey ? "AI（已設定金鑰）" : "一般");
 
 const SYS_TR = "你是課堂即時口譯。把老師講的英文翻成台灣用的繁體中文。這是消防機關的課程，主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊，專有名詞請用台灣慣用的說法，MANET、DMR、TETRA、P25 這類縮寫保留英文，Wave Relay、MPU5、Cloud Relay、Persistent Systems 這些產品與廠商名稱也保留英文。語音辨識常聽錯專有名詞，例如把 MANET 聽成 Monday、mayonnaise、May、Mandy、maya、mad a、men a、man a、Manatee，把 node 聽成 note，把 ad hoc 聽成 unlock，請依上下文和投影片修正後再翻。內容是從連續講話中切出來的一小段，開頭或結尾可能不是完整句子，照原樣翻成通順的中文片段，不要自己補完。每次只翻使用者最新送來的這一段；之前的段落已經翻過，只用來了解上下文，絕對不要再翻一次。如果這一段是接著上一段沒講完的句子，就從接續的地方直接寫起，開頭不要重述上一段。範例：上一段是「these networks are designed to be geographically static and rely heavily on」，已翻成「這些網路被設計成地理位置固定，並且高度依賴」；這一段是「a fixed infrastructure typically such a network has one node designated as the master node」，正確輸出是「固定的基礎設施。通常這類網路會指定一個節點作為主節點」，錯誤輸出是把「這些網路被設計成地理位置固定」再寫一次。不要加入原文沒有的意思，尤其不要自己加上否定或把意思反過來；開頭缺字時，依前一段推測最合理的銜接。就算只有一兩個字、或看不懂，也只輸出最可能的中文翻譯，絕對不要解釋、不要分析、不要提到語音辨識，也不要用括號加註「應為…」這類修正說明，直接寫修正後的結果。";
 const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口語的英文問句，方便在課堂上舉手發問。用詞可以參考投影片。只輸出英文問句，不要加任何說明。";
-const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。這個語音辨識對專有名詞很不準，常把詞聽成同音或近音的字，整句看起來會不通順。常見的例子：「主節點」聽成「做姐姐」「主接點」，「節點」聽成「接點」「結點」，「MANET」聽成「Mac」「曼尼」「妹妹」，「行動隨意網路」聽成「用飛網路」「行動隨一網路」，「路由」聽成「路有」「路遊」，「路由協定」聽成「路有決定」「路有協定」，「拓撲」聽成「痛苦」「拖鋪」，「適應」聽成「是應」「市應」「門市應」，「鏈路」聽成「練路」「戀路」，「位址」聽成「位置」，「頻寬」聽成「平寬」。請依讀音、上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現），把這一段還原成講師最可能說的原話，並加上適當的標點。只還原聽錯的字詞，不要加入原文沒有提到的新內容，不要翻譯，不要解釋；真的看不出原意的地方保留原樣。每次只處理使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出還原後的文字。";
+const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。這個語音辨識對專有名詞很不準，常把詞聽成同音或近音的字，整句看起來會不通順。常見的例子：「主節點」聽成「做姐姐」「主接點」，「節點」聽成「接點」「結點」，「MANET」聽成「Mac」「曼尼」「妹妹」，「行動隨意網路」聽成「用飛網路」「行動隨一網路」，「路由」聽成「路有」「路遊」，「路由協定」聽成「路有決定」「路有協定」，「拓撲」聽成「痛苦」「拖鋪」，「適應」聽成「是應」「市應」「門市應」，「鏈路」聽成「練路」「戀路」，「位址」聽成「位置」，「頻寬」聽成「平寬」。請依讀音、上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現），把這一段還原成講師最可能說的原話，並加上適當的標點。只還原聽錯的字詞，不要加入原文沒有提到的新內容，名詞表裡標 * 的專有名詞可以照名詞表的規則寫成「中文（英文）」，除此之外不要加註解，不要翻譯，不要解釋；真的看不出原意的地方保留原樣。每次只處理使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出還原後的文字。";
 // 需要比較強的模型時用這個（手寫辨識、中文字幕校正）；帳號用不了就退回翻譯用的模型
 async function callStrong(system, user, history) {
   const o = { maxTokens: 8000, effort: "medium" };
@@ -378,9 +378,11 @@ async function callStrong(system, user, history) {
 async function fixZh(raw, prevRaw, prevFixed) {
   const hist = (prevRaw && prevFixed) ? [{ role: "user", content: prevRaw }, { role: "assistant", content: prevFixed }] : [];
   let out;
+  // 名詞表跟英文翻譯用同一份：有 * 的專有名詞一樣會寫成「中文（英文）」
   try { out = await callStrong(SYS_ZH + "\n\n" + buildCtx(null), raw, hist); }
   catch (e) { return { out: "", why: "AI 沒有回應：" + (e && e.message ? e.message : e) }; }
-  const strip = t => t.replace(/[\s，。、！？；：,.!?;:（）()「」]/g, "");
+  // 比長度時不算標點和括號裡的註解
+  const strip = t => t.replace(/[（(][^（()）]*[)）]/g, "").replace(/[\s，。、！？；：,.!?;:「」]/g, "");
   const n = strip(raw).length, m = strip(out).length;
   if (!out) return { out: "", why: "AI 回了空白" };
   if (m > n * 2 + 10 || m < n * 0.5) return { out: "", why: "AI 回的長度和原文差太多，沒有採用" };
