@@ -152,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 41</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 42</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -936,9 +936,9 @@ async function addPhoto(img, note, id) {
   id = id || ("m" + Date.now() + Math.random().toString(36).slice(2, 7));
   if (photos.some(x => x.id === id)) return false;
   const d = new Date();
-  // 記下拍照當下是哪一頁、老師剛講的兩句話，回去看才知道這張在拍什麼
+  // 記下拍照當下是哪一頁、老師剛講的話（兩分鐘內、最多兩句），回去看才知道這張在拍什麼
   const ph = { id: id, k: pk(page || 0), ts: d.getTime(), t: d.toTimeString().slice(0, 8), img: img, note: note || "",
-               ctx: log.slice(-2).map(l => ({ zh: l.zh || "", en: l.en })) };
+               ctx: log.filter(l => l.ts && d.getTime() - l.ts < 120000).slice(-2).map(l => ({ zh: l.zh || "", en: l.en })) };   // 只取拍照前兩分鐘內講的話
   photos.push(ph);
   try { await idbPut(ph); } catch (e) { setStatus("照片存不進這台電腦：" + (e && e.message), "bad"); }
   drawPhotos();
@@ -1244,11 +1244,11 @@ async function addLine(en, gap) {
       l.zh += sep + en;          // 前面已經校正好的部分先留著，新的這段先顯示原始辨識
       refresh(i);
     } else {
-      l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: "", zh: en, raw: en, star: false, src: "zh", eng: "中文" };
+      l = { t: new Date().toTimeString().slice(0, 8), ts: Date.now(), page: page || 0, doc: curDoc, en: "", zh: en, raw: en, star: false, src: "zh", eng: "中文" };
       i = log.push(l) - 1;
       box.append(drawLine(l, i));
     }
-    l.v = (l.v || 0) + 1;
+    l.v = (l.v || 0) + 1; l.ts = Date.now();
     const v = l.v;
     save(); toBottom();
     if (!aiKey) return;
@@ -1267,11 +1267,11 @@ async function addLine(en, gap) {
     l.en += " " + en;
     refresh(i);
   } else {
-    l = { t: new Date().toTimeString().slice(0, 8), page: page || 0, doc: curDoc, en: en, zh: "", star: false };
+    l = { t: new Date().toTimeString().slice(0, 8), ts: Date.now(), page: page || 0, doc: curDoc, en: en, zh: "", star: false };
     i = log.push(l) - 1;
     box.append(drawLine(l, i));
   }
-  l.v = (l.v || 0) + 1;
+  l.v = (l.v || 0) + 1; l.ts = Date.now();
   const v = l.v;
   toBottom();
   followSlides();
