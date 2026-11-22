@@ -152,7 +152,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 38</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 39</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -365,9 +365,12 @@ const SYS_ASK = "把學員想問的中文，改寫成一句禮貌、簡單、口
 const SYS_ZH = "你是課堂字幕校對。使用者送來的是語音辨識聽到的中文（講師用中文講課），主題是無線 Mesh 網路與 MANET（行動隨意網路）、無線電通訊、消防通訊設備。這個語音辨識對專有名詞很不準，常把詞聽成同音或近音的字，整句看起來會不通順。常見的例子：「主節點」聽成「做姐姐」「主接點」，「節點」聽成「接點」「結點」，「MANET」聽成「Mac」「曼尼」「妹妹」，「行動隨意網路」聽成「用飛網路」「行動隨一網路」，「路由」聽成「路有」「路遊」，「路由協定」聽成「路有決定」「路有協定」，「拓撲」聽成「痛苦」「拖鋪」，「適應」聽成「是應」「市應」「門市應」，「鏈路」聽成「練路」「戀路」，「位址」聽成「位置」，「頻寬」聽成「平寬」。請依讀音、上下文和名詞表（右邊的中文說法、左邊的英文術語都可能出現），把這一段還原成講師最可能說的原話，並加上適當的標點。只還原聽錯的字詞，不要加入原文沒有提到的新內容，不要翻譯，不要解釋；真的看不出原意的地方保留原樣。每次只處理使用者最新送來的這一段，前面的段落只用來了解上下文。只輸出還原後的文字。";
 // 需要比較強的模型時用這個（手寫辨識、中文字幕校正）；帳號用不了就退回翻譯用的模型
 async function callStrong(system, user, history) {
-  try { return await callAI(system, user, history, HW_MODEL); }
+  const o = { maxTokens: 8000, effort: "medium" };
+  try { return await callAI(system, user, history, HW_MODEL, o); }
   catch (e) {
-    if (!/model|not.?found|404|permission/i.test(String(e && e.message))) throw e;
+    const m = String(e && e.message);
+    if (e && e.status === 400 && /effort|output_config/i.test(m)) return await callAI(system, user, history, HW_MODEL, { maxTokens: 8000 });
+    if (!/model|not.?found|404|permission/i.test(m)) throw e;
     return await callAI(system, user, history);
   }
 }
@@ -389,7 +392,11 @@ function buildCtx(c) {
   if (sendSlide && c && c.slide) s += "目前投影片上的文字（只供參考，不要翻譯）：\n" + c.slide + "\n\n";
   return s;
 }
-async function callAI(system, user, history, model) {
+async function callAI(system, user, history, model, opts) {
+  opts = opts || {};
+  // 這一代的模型回答前會先「思考」，思考用掉的量也算在輸出上限裡；上限太小會只剩思考、沒有答案，所以要留夠
+  const body = { model: model || aiModel, max_tokens: opts.maxTokens || 4000, system: system, messages: (history || []).concat([{ role: "user", content: user }]) };
+  if (opts.effort) body.output_config = { effort: opts.effort };
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -398,11 +405,13 @@ async function callAI(system, user, history, model) {
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true"
     },
-    body: JSON.stringify({ model: model || aiModel, max_tokens: 700, system: system, messages: (history || []).concat([{ role: "user", content: user }]) })
+    body: JSON.stringify(body)
   });
   const j = await r.json();
-  if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
-  return (j.content || []).map(c => c.text || "").join("").trim();
+  if (!r.ok) { const e = new Error((j.error && j.error.message) || ("HTTP " + r.status)); e.status = r.status; throw e; }
+  const txt = (j.content || []).map(c => c.text || "").join("").trim();
+  if (!txt && j.stop_reason === "max_tokens") throw new Error("AI 還沒回答就用完輸出上限了");
+  return txt;
 }
 
 // ---------- PDF ----------
@@ -795,13 +804,7 @@ async function hwRun(job) {
       { type: "image", source: { type: "base64", media_type: "image/png", data: job.img } },
       { type: "text", text: "請把圖中的手寫內容轉成文字。" }
     ];
-    let txt;
-    try { txt = await callAI(SYS_HW, msgs, null, HW_MODEL); }
-    catch (e1) {
-      // 手寫用比較強的模型；如果這個帳號用不了那個模型，就退回翻譯用的模型
-      if (!/model|not.?found|404|permission/i.test(String(e1 && e1.message))) throw e1;
-      txt = await callAI(SYS_HW, msgs);
-    }
+    const txt = await callStrong(SYS_HW, msgs, null);   // 手寫用比較強的模型，帳號用不了就自動退回
     if (!txt) throw new Error("看不出寫了什麼，請寫大一點、清楚一點");
     job.sink(txt);
   } catch (e) {
