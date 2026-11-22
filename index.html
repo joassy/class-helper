@@ -97,6 +97,11 @@
   #photoView #pvTools .pvc.hi { border-radius:5px; width:34px; }
   #photoView #pvTools .pvc.on { border-color:#fff; box-shadow:0 0 0 3px var(--accent); }
   #left.popped #photoView #pvTools .pvc { width:38px; height:38px; }
+  #photoView #pvTools .pvw { width:30px; height:30px; padding:0; display:inline-flex; align-items:center; justify-content:center; }
+  #photoView #pvTools .pvw.on { background:#7a5a12; border-color:var(--accent); }
+  #pvTools .pvw i { display:block; border-radius:50%; background:var(--text); }
+  #pvTools .sep { width:1px; height:22px; background:var(--line); margin:0 2px; }
+  #left.popped #photoView #pvTools .pvw { width:40px; height:40px; }
   #photoView .ctx { color:#c9d2e0; font-size:14px; line-height:1.55; overflow:auto; max-height:38%; flex:0 1 auto; }
   #photoView textarea { flex:1 1 auto; min-height:110px; width:100%; background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:8px; font-size:15px; }
   #photoView .pf { display:flex; gap:10px; flex-wrap:wrap; }
@@ -145,7 +150,7 @@
   <button id="camBtn" title="用手機拍實作照片，自動放進目前這一頁的筆記">📷 手機拍照</button>
   <button id="clear">清除紀錄</button>
   <button id="cfgBtn">⚙ AI 翻譯</button>
-  <span id="ver" style="font-size:12px;color:var(--dim)">版本 34</span>
+  <span id="ver" style="font-size:12px;color:var(--dim)">版本 35</span>
   <span id="engine"></span>
   <span id="meterBox" title="麥克風收到的音量">🎚 <span id="meter"><span id="meterFill"></span></span></span>
   <span id="status">尚未開始</span>
@@ -230,10 +235,20 @@
       <div id="pvRight">
         <div id="pvTools">
           <button id="pvPen" title="在照片上畫記號">✏️ 畫筆</button>
+          <button class="pvc" data-c="#111111" data-w="5" title="黑筆" aria-label="黑筆" style="background:#111111"></button>
           <button class="pvc on" data-c="#e53935" data-w="5" title="紅筆" aria-label="紅筆" style="background:#e53935"></button>
           <button class="pvc" data-c="#1e6fff" data-w="5" title="藍筆" aria-label="藍筆" style="background:#1e6fff"></button>
-          <button class="pvc" data-c="#111111" data-w="5" title="黑筆" aria-label="黑筆" style="background:#111111"></button>
+          <button class="pvc" data-c="#1b9e3e" data-w="5" title="綠筆" aria-label="綠筆" style="background:#1b9e3e"></button>
+          <button class="pvc" data-c="#f57c00" data-w="5" title="橘筆" aria-label="橘筆" style="background:#f57c00"></button>
+          <button class="pvc" data-c="#8e24aa" data-w="5" title="紫筆" aria-label="紫筆" style="background:#8e24aa"></button>
+          <span class="sep"></span>
           <button class="pvc hi" data-c="rgba(255,235,59,0.45)" data-w="24" title="黃色螢光筆" aria-label="黃色螢光筆" style="background:#ffeb3b"></button>
+          <button class="pvc hi" data-c="rgba(105,240,174,0.45)" data-w="24" title="綠色螢光筆" aria-label="綠色螢光筆" style="background:#69f0ae"></button>
+          <button class="pvc hi" data-c="rgba(255,128,171,0.45)" data-w="24" title="粉紅螢光筆" aria-label="粉紅螢光筆" style="background:#ff80ab"></button>
+          <span class="sep"></span>
+          <button class="pvw" data-s="0.5" title="細" aria-label="細"><i style="width:4px;height:4px"></i></button>
+          <button class="pvw on" data-s="1" title="中" aria-label="中"><i style="width:8px;height:8px"></i></button>
+          <button class="pvw" data-s="2" title="粗" aria-label="粗"><i style="width:14px;height:14px"></i></button>
           <button id="pvUndo">↩ 復原</button>
           <button id="pvClr">清除筆跡</button>
         </div>
@@ -351,7 +366,7 @@ function buildCtx(c) {
   if (sendSlide && c && c.slide) s += "目前投影片上的文字（只供參考，不要翻譯）：\n" + c.slide + "\n\n";
   return s;
 }
-async function callAI(system, user, history) {
+async function callAI(system, user, history, model) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -360,7 +375,7 @@ async function callAI(system, user, history) {
       "anthropic-version": "2023-06-01",
       "anthropic-dangerous-direct-browser-access": "true"
     },
-    body: JSON.stringify({ model: aiModel, max_tokens: 700, system: system, messages: (history || []).concat([{ role: "user", content: user }]) })
+    body: JSON.stringify({ model: model || aiModel, max_tokens: 700, system: system, messages: (history || []).concat([{ role: "user", content: user }]) })
   });
   const j = await r.json();
   if (!r.ok) throw new Error((j.error && j.error.message) || ("HTTP " + r.status));
@@ -680,6 +695,7 @@ $("slideBox").addEventListener("drop", e => {
 
 // ---------- 手寫板：寫完交給 AI 辨識成文字，填進便條、照片說明或整頁筆記 ----------
 const SYS_HW = "你是手寫辨識工具。圖片是使用者在課堂上手寫的筆記，可能是繁體中文、英文或兩者混合，主題是無線網路（MANET、Mesh）與消防通訊設備。把手寫內容逐字轉成文字：中文一律用繁體，英文保留原樣，換行照原樣。看不清楚的字依上下文選最可能的字。只輸出轉出來的文字，不要加引號、說明或任何其他內容。圖中沒有文字就什麼都不要輸出。";
+const HW_MODEL = "claude-sonnet-5-5";   // 手寫辨識用的模型：比翻譯用的慢一點，但認字比較準
 let hwTarget = "", hwSink = null, hwJobs = 0, hwStrokes = [], hwCur = null, hwPtr = null;
 function hwPaint() {
   const c = $("hwCanvas"), x = c.getContext("2d"), W = c.width, H = c.height;
@@ -735,7 +751,7 @@ function hwImage() {
   hwStrokes.forEach(st => st.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); }));
   const pad = 24, bx = Math.max(0, x0 * W - pad), by = Math.max(0, y0 * H - pad);
   const bw = Math.min(W, x1 * W + pad) - bx, bh = Math.min(H, y1 * H + pad) - by;
-  const sc = Math.min(1, 900 / bw, 560 / bh);
+  const sc = Math.min(1, 1560 / bw, 1100 / bh);   // 中文筆畫多，圖太小會認錯，所以保留足夠的解析度
   const o = document.createElement("canvas"); o.width = Math.max(40, Math.round(bw * sc)); o.height = Math.max(40, Math.round(bh * sc));
   const x = o.getContext("2d");
   x.fillStyle = "#fff"; x.fillRect(0, 0, o.width, o.height);
@@ -752,10 +768,17 @@ function hwImage() {
 async function hwRun(job) {
   hwJobs++; $("hwToast").hidden = false;
   try {
-    const txt = await callAI(SYS_HW, [
+    const msgs = [
       { type: "image", source: { type: "base64", media_type: "image/png", data: job.img } },
       { type: "text", text: "請把圖中的手寫內容轉成文字。" }
-    ]);
+    ];
+    let txt;
+    try { txt = await callAI(SYS_HW, msgs, null, HW_MODEL); }
+    catch (e1) {
+      // 手寫用比較強的模型；如果這個帳號用不了那個模型，就退回翻譯用的模型
+      if (!/model|not.?found|404|permission/i.test(String(e1 && e1.message))) throw e1;
+      txt = await callAI(SYS_HW, msgs);
+    }
     if (!txt) throw new Error("看不出寫了什麼，請寫大一點、清楚一點");
     job.sink(txt);
   } catch (e) {
@@ -909,7 +932,7 @@ function drawPhotos() {
   add.onclick = () => $("photoFile").click();
   box.append(add);
 }
-let pvStroke = null, pvPtr = null, pvColor = "#e53935", pvW = 5;
+let pvStroke = null, pvPtr = null, pvColor = "#e53935", pvBase = 5, pvScale = 1, pvW = 5;
 function pvPaint() {
   const c = $("pvInk"), x = c.getContext("2d");
   x.clearRect(0, 0, c.width, c.height);
@@ -938,7 +961,14 @@ const pvColorBtns = [...document.querySelectorAll("#pvTools .pvc")];
 pvColorBtns.forEach(b => {
   b.onclick = () => {
     pvColorBtns.forEach(x => x.classList.remove("on")); b.classList.add("on");
-    pvColor = b.dataset.c; pvW = +b.dataset.w; pvSetDraw(true);
+    pvColor = b.dataset.c; pvBase = +b.dataset.w; pvW = pvBase * pvScale; pvSetDraw(true);
+  };
+});
+const pvWidthBtns = [...document.querySelectorAll("#pvTools .pvw")];
+pvWidthBtns.forEach(b => {
+  b.onclick = () => {
+    pvWidthBtns.forEach(x => x.classList.remove("on")); b.classList.add("on");
+    pvScale = +b.dataset.s; pvW = pvBase * pvScale; pvSetDraw(true);
   };
 });
 $("pvUndo").onclick = () => { if (pvCur && pvCur.strokes && pvCur.strokes.length) { pvCur.strokes.pop(); idbPut(pvCur).catch(() => {}); pvPaint(); } };
